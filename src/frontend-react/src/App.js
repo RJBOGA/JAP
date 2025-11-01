@@ -26,17 +26,18 @@ function App() {
   };
 
   const formatContentForDisplay = (content) => {
-    // Basic Markdown to HTML conversion for strong tags and line breaks
+    // Basic Markdown to HTML conversion for strong tags and code blocks
     let html = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    // Escape backticks for code blocks, but keep the structure
+    
+    // Convert multiline code blocks (```graphql...```) to <pre><code>
     html = html.replace(/```(.*?)\n([\s\S]*?)```/g, (match, p1, p2) => {
-        const codeType = p1.trim() || 'text';
         const escapedCode = p2.replace(/</g, '&lt;').replace(/>/g, '&gt;');
         return `<pre><code>${escapedCode}</code></pre>`;
     });
-    // Convert remaining newlines to <br/> outside of code blocks (handled by pre-wrap in CSS)
+    
+    // Simple line breaks conversion (less necessary with pre-wrap but safe)
     // The previous implementation used dangerouslySetInnerHTML and line breaks, which is okay for this context.
-    // We rely on CSS 'white-space: pre-wrap' for readability and keep the strong tags/code block logic.
+    
     return html;
   };
 
@@ -64,9 +65,21 @@ function App() {
       const gql = data.graphql || "";
       const result = data.result || {};
       
-      assistantText = 
-        `**Generated GraphQL:**\n\n\`\`\`graphql\n${gql}\n\`\`\`\n\n` +
-        `**Result:**\n\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
+      // --- NEW LOGIC: Check for Small Talk ---
+      // The backend returns a special flag in the 'graphql' field for small talk
+      if (gql === "Small talk handled by service logic" && result.response) {
+          // Render ONLY the conversational text
+          assistantText = result.response;
+      } 
+      // --- END NEW LOGIC ---
+      
+      else {
+        // 3. Handle GraphQL/Data Response (Full Debug Output)
+        assistantText = 
+          `**Generated GraphQL:**\n\n\`\`\`graphql\n${gql}\n\`\`\`\n\n` +
+          `**Result:**\n\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
+      }
+
 
     } catch (error) {
       // 4. Handle Errors
