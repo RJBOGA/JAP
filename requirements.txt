@@ -1,0 +1,6 @@
+Flask
+ariadne
+pymongo
+python-dotenv
+requests
+streamlit

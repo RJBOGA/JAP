@@ -1,0 +1,128 @@
+# schema.graphql
+
+# --- Existing User Types ---
+type User {
+  UserID: Int!
+  FirstName: String!
+  LastName: String!
+  DateOfBirth: String
+  ProfessionalTitle: String
+  Summary: String
+}
+input UserInput { # ... no changes
+  FirstName: String!
+  LastName: String!
+  DateOfBirth: String
+  ProfessionalTitle: String
+  Summary: String
+}
+input UserUpdateInput { # ... no changes
+  FirstName: String
+  LastName: String
+  DateOfBirth: String
+  ProfessionalTitle: String
+  Summary: String
+}
+
+
+# --- Existing Job Types ---
+type Job { # ... no changes
+  jobId: Int!
+  title: String!
+  company: String
+  location: String
+  salaryRange: String
+  skillsRequired: [String]
+  description: String
+  postedAt: String
+}
+input JobInput { # ... no changes
+  title: String!
+  company: String
+  location: String
+  salaryRange: String
+  skillsRequired: [String]
+  description: String
+}
+input JobUpdateInput { # ... no changes
+  title: String
+  company: String
+  location: String
+  salaryRange: String
+  skillsRequired: [String]
+  description: String
+}
+
+
+# --- New Application Type ---
+type Application {
+  appId: Int!
+  userId: Int!
+  jobId: Int!
+  status: String!  # e.g., "Applied", "Under Review", "Interview", "Rejected", "Offered"
+  submittedAt: String!
+  notes: String
+  
+  # --- Linked entities for richer queries ---
+  candidate: User
+  job: Job
+}
+
+input ApplicationInput {
+  userId: Int!
+  jobId: Int!
+  notes: String
+}
+
+input ApplicationUpdateInput {
+  status: String
+  notes: String
+}
+
+
+# --- Updated Query Type ---
+type Query {
+  # ... existing User and Job queries
+  users(limit: Int, skip: Int, FirstName: String, LastName: String, DateOfBirth: String): [User!]!
+  userById(UserID: Int!): User
+  jobs(limit: Int, skip: Int, company: String, location: String, title: String): [Job!]!
+  jobById(jobId: Int!): Job
+
+  # --- New Application queries ---
+  applications(userId: Int, jobId: Int, status: String): [Application!]!
+  applicationById(appId: Int!): Application
+}
+
+
+# --- Updated Mutation Type ---
+type Mutation {
+  # ... existing User and Job mutations
+  createUser(input: UserInput!): User!
+  updateUser(UserID: Int!, input: UserInput!): User!
+  updateUserByName(FirstName: String, LastName: String, input: UserUpdateInput!): User!
+  updateUsersByName(FirstName: String, LastName: String, input: UserUpdateInput!): Int!
+  deleteUser(UserID: Int!): Boolean!
+  deleteUserByFields(FirstName: String, LastName: String, DateOfBirth: String): Boolean!
+  deleteUsersByFields(FirstName: String, LastName: String, DateOfBirth: String): Int!
+  createJob(input: JobInput!): Job!
+  updateJob(jobId: Int!, input: JobUpdateInput!): Job
+  deleteJob(jobId: Int!): Boolean!
+
+  # --- New Application mutations ---
+  """
+  Creates an application linking a user to a job.
+  """
+  createApplication(input: ApplicationInput!): Application!
+  
+  """
+  Smart mutation: Applies a user to a job using names instead of IDs.
+  The backend will look up the user and job IDs.
+  """
+  #apply(userFirstName: String!, userLastName: String, jobTitle: String!, companyName: String): Application!
+  apply(userName: String!, jobTitle: String!, companyName: String): Application!
+  
+  """
+  Updates the status or notes of an existing application.
+  """
+  updateApplication(appId: Int!, input: ApplicationUpdateInput!): Application
+}

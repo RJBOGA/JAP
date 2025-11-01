@@ -1,0 +1,18 @@
+Python specific files
+
+pycache/
+*.pyc
+.pytest_cache/
+.coverage
+
+Dependency directories
+
+venv/
+node_modules/
+dist/
+build/
+
+IDE files
+
+.idea/
+.vscode/
