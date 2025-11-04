@@ -74,220 +74,6 @@ src/frontend-react/src/LoginPage.js
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/backend/repository/account_repo.py">
-# src/backend/repository/account_repo.py
-from typing import Optional, Dict, Any
-from ..db import get_db
-
-def accounts_collection():
-    """Returns a handle to the 'accounts' collection."""
-    return get_db()["accounts"]
-
-def find_account_by_email(email: str) -> Optional[dict]:
-    """
-    Finds a single account by its email (case-insensitive).
-    """
-    return accounts_collection().find_one({"email": {"$regex": f"^{email}$", "$options": "i"}})
-
-def insert_account(account_doc: Dict[str, Any]) -> None:
-    """
-    Inserts a new account document into the database.
-    """
-    accounts_collection().insert_one(account_doc)
-</file>
-
-<file path="src/frontend-react/src/LoginPage.css">
-/* src/frontend-react/src/App.css */
-
-/* --- Add these styles to the end of the file --- */
-
-.login-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  background-color: var(--background-color);
-}
-
-.login-form {
-  padding: 40px;
-  background-color: var(--card-background);
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  width: 100%;
-  max-width: 400px;
-  text-align: center;
-}
-
-.login-form h2 {
-  margin-bottom: 25px;
-  color: var(--text-color);
-}
-
-.input-group {
-  margin-bottom: 20px;
-  text-align: left;
-}
-
-.input-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.input-group input {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 5px;
-  background-color: var(--input-bg);
-  color: var(--text-color);
-  box-sizing: border-box; /* Ensures padding doesn't affect width */
-}
-
-.login-button {
-  width: 100%;
-  padding: 12px;
-  background-color: var(--button-bg);
-  color: var(--button-text);
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: bold;
-  transition: background-color 0.2s;
-}
-
-.login-button:hover {
-  background-color: #0b5cb0;
-}
-
-.toggle-form {
-  margin-top: 20px;
-  font-size: 14px;
-}
-
-.toggle-button {
-  background: none;
-  border: none;
-  color: var(--button-bg);
-  cursor: pointer;
-  font-weight: bold;
-  padding: 0 5px;
-  font-size: 14px;
-}
-
-.input-group select {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 5px;
-  background-color: var(--input-bg);
-  color: var(--text-color);
-  box-sizing: border-box;
-  font-size: 16px; /* Match input font-size */
-  font-family: inherit; /* Inherit font from parent */
-  -webkit-appearance: none; /* Removes default browser styling on Safari/Chrome */
-  -moz-appearance: none; /* Removes default browser styling on Firefox */
-  appearance: none;
-  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
-  background-repeat: no-repeat;
-  background-position: right 1rem center;
-  background-size: 0.65em auto;
-}
-</file>
-
-<file path="src/frontend-react/src/LoginPage.js">
-// src/frontend-react/src/LoginPage.js
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import './LoginPage.css';
-
-const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'http://localhost:8000';
-
-function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState('Applicant');
-  const [isLogin, setIsLogin] = useState(true);
-  const navigate = useNavigate();
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (isLogin) {
-      // --- Sign-In Logic ---
-      try {
-        const payload = { email, password };
-        const response = await axios.post(`${API_ENDPOINT}/login`, payload);
-        
-        // 1. Store user data in session storage upon successful login
-        sessionStorage.setItem('user', JSON.stringify(response.data.user));
-        
-        // 2. Redirect to the chat page
-        navigate('/chat');
-
-      } catch (error) {
-        if (error.response && error.response.data.error) {
-          alert(`Login failed: ${error.response.data.error}`);
-        } else {
-          alert('Login failed: An unknown error occurred.');
-        }
-        console.error('Login error:', error);
-      }
-    } else {
-      // --- Registration Logic (remains the same) ---
-      try {
-        const payload = { email, firstName, lastName, password, role };
-        const response = await axios.post(`${API_ENDPOINT}/register`, payload);
-
-        alert(response.data.message);
-        setIsLogin(true);
-        setEmail('');
-        setFirstName('');
-        setLastName('');
-        setPassword('');
-        setRole('Applicant');
-
-      } catch (error) {
-        if (error.response && error.response.data.error) {
-          alert(`Registration failed: ${error.response.data.error}`);
-        } else {
-          alert('Registration failed: An unknown error occurred.');
-        }
-        console.error('Registration error:', error);
-      }
-    }
-  };
-
-  // The JSX for the form remains unchanged
-  return (
-    <div className="login-container">
-      <form onSubmit={handleSubmit} className="login-form">
-        <h2>{isLogin ? 'Sign In' : 'Sign Up'}</h2>
-        {!isLogin && (
-          <>
-            <div className="input-group"><label>First Name</label><input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required /></div>
-            <div className="input-group"><label>Last Name</label><input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} required /></div>
-            <div className="input-group"><label>I am a</label><select value={role} onChange={(e) => setRole(e.target.value)} required><option value="Applicant">User / Applicant</option><option value="Recruiter">Recruiter</option></select></div>
-          </>
-        )}
-        <div className="input-group"><label>Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
-        <div className="input-group"><label>Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
-        <button type="submit" className="login-button">{isLogin ? 'Sign In' : 'Sign Up'}</button>
-        <p className="toggle-form">{isLogin ? "Don't have an account?" : "Already have an account?"}<button type="button" onClick={() => setIsLogin(!isLogin)} className="toggle-button">{isLogin ? 'Sign Up' : 'Sign In'}</button></p>
-      </form>
-    </div>
-  );
-}
-
-export default LoginPage;
-</file>
-
 <file path=".gitignore">
 Python specific files
 
@@ -413,254 +199,6 @@ This repository is maintained by RJBOGA. Include your preferred license file if 
 ## Contact
 
 For questions or help, open an issue in the repository or contact the maintainer.
-</file>
-
-<file path="requirements.txt">
-# requirements.txt
-Flask
-ariadne
-pymongo
-python-dotenv
-requests
-streamlit
-bcrypt
-</file>
-
-<file path="src/backend/app.py">
-import os
-import sys
-# Add project root (src/) to sys.path for absolute imports from src.backend.*
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-
-import bcrypt
-from src.backend.repository import account_repo
-import requests
-from flask_cors import CORS
-from flask import Flask, jsonify, request
-from ariadne import load_schema_from_path, make_executable_schema, graphql_sync
-from ariadne.explorer import ExplorerGraphiQL
-from dotenv import load_dotenv
-from werkzeug.exceptions import HTTPException
-from src.backend.models.user_models import UserProfileType
-
-# Load environment variables from the src directory
-load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
-
-# Import modules from the new structure
-from src.backend.errors import (
-    handle_http_exception,
-    handle_value_error,
-    handle_generic_exception,
-    # unwrap_graphql_errors is now only used inside the service
-    json_error,
-)
-# Import the NL2GQL service function
-from src.backend.services.nl2gql_service import process_nl2gql_request
-
-# Import resolvers for ALL entities
-from src.backend.resolvers.user_resolvers import query as user_query, mutation as user_mutation
-from src.backend.resolvers.job_resolvers import query as job_query, mutation as job_mutation
-from src.backend.resolvers.application_resolvers import query as app_query, mutation as app_mutation, application as application_object
-
-# Import for database counter initialization
-from src.backend.db import ensure_user_counter, ensure_job_counter, ensure_application_counter
-
-# --- Flask app setup ---
-app = Flask(__name__)
-CORS(app)
-explorer_html = ExplorerGraphiQL().html(None)
-
-# --- Load schema ---
-schema_path = os.path.join(os.path.dirname(__file__), "schema.graphql")
-type_defs = load_schema_from_path(schema_path)
-
-# Combine resolvers from all modules into a list
-schema = make_executable_schema(
-    type_defs,
-    [user_query, job_query, app_query],
-    [user_mutation, job_mutation, app_mutation],
-    application_object
-)
-
-# Initialize all database counters
-ensure_user_counter()
-ensure_job_counter()
-ensure_application_counter()
-
-# --- Error Handlers ---
-@app.errorhandler(404)
-def not_found(e):
-    return json_error("Not found", 404)
-
-@app.errorhandler(405)
-def method_not_allowed(e):
-    return json_error("Method not allowed", 405)
-
-@app.errorhandler(ValueError)
-def value_error(e):
-    return handle_value_error(e)
-
-@app.errorhandler(Exception)
-def unhandled_exception(e):
-    if isinstance(e, HTTPException):
-        return handle_http_exception(e)
-    return handle_generic_exception(e)
-
-# --- GraphQL endpoints (No Changes) ---
-@app.route("/graphql", methods=["GET"])
-def graphql_explorer():
-    return explorer_html, 200
-
-@app.route("/graphql", methods=["POST"])
-def graphql_server():
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        # We call jsonify here because this is the final response layer
-        payload, status = json_error("Body must be JSON with 'query' and optional 'variables'", 400)
-        return jsonify(payload), status
-
-    success, result = graphql_sync(
-        schema,
-        data,
-        context_value={"request": request},
-        debug=app.debug,
-    )
-    # The main graphql endpoint doesn't need unwrap_graphql_errors,
-    # as it returns the standard GraphQL JSON response including the "errors" key.
-    return jsonify(result), (200 if success else 400)
-
-# --- Health check (No Changes) ---
-@app.route("/")
-def health():
-    return jsonify({"status": "Backend is running!"}), 200
-
-# --- NL2GQL Endpoint (Simplified) ---
-@app.route("/nl2gql", methods=["POST"])
-def nl2gql():
-    data = request.get_json(silent=True) or {}
-    user_text = data.get("query", "")
-    run_graphql = request.args.get("run", "true").lower() != "false"
-
-    if not isinstance(user_text, str) or not user_text.strip():
-        payload, status = json_error("Missing 'query' in body", 400)
-        return jsonify(payload), status
-
-    try:
-        with open(schema_path, "r", encoding="utf-8") as f:
-            schema_sdl = f.read()
-    except Exception as e:
-        payload, status = json_error(f"Failed to read schema: {e}", 500)
-        return jsonify(payload), status
-
-    def execute_graphql_query(gql_data):
-        return graphql_sync(
-            schema,
-            gql_data,
-            context_value={"request": request},
-            debug=app.debug,
-        )
-
-    # The service now reliably returns a (payload_dict, status_code) tuple
-    payload, status_code = process_nl2gql_request(
-        user_text, schema_sdl, run_graphql, execute_graphql_query
-    )
-
-    # We can now simply jsonify the payload and return it with its status
-    return jsonify(payload), status_code
-
-# --- NEW User Registration Endpoint ---
-@app.route("/register", methods=["POST"])
-def register_user():
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "Invalid JSON body"}), 400
-
-    # 1. Extract and validate required fields, including the new 'role'
-    email = data.get("email")
-    password = data.get("password")
-    first_name = data.get("firstName")
-    last_name = data.get("lastName")
-    role = data.get("role")
-
-    if not all([email, password, first_name, last_name, role]):
-        return jsonify({"error": "Missing required fields: email, password, firstName, lastName, role"}), 400
-
-    # 2. Validate the role against our UserProfileType enum
-    try:
-        # This will check if 'role' is 'Applicant' or 'Recruiter' (case-insensitively)
-        # and will raise a ValueError if it's not.
-        validated_role = UserProfileType.from_str(role).value
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-
-    # 3. Check if user already exists
-    if account_repo.find_account_by_email(email):
-        return jsonify({"error": f"An account with the email '{email}' already exists."}), 409
-
-    # 4. Hash the password
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-
-    # 5. Create the new user document with the validated role
-    new_account = {
-        "email": email.lower(),
-        "password": hashed_password,
-        "firstName": first_name,
-        "lastName": last_name,
-        "role": validated_role  # Add the role to the document
-    }
-
-    # 6. Insert into the database
-    try:
-        account_repo.insert_account(new_account)
-        return jsonify({
-            "message": "User registered successfully!",
-            "user": {"email": email, "role": validated_role}
-        }), 201
-    except Exception as e:
-        return jsonify({"error": f"An internal error occurred: {e}"}), 500
-    
-# --- NEW User Login Endpoint ---
-@app.route("/login", methods=["POST"])
-def login_user():
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "Invalid JSON body"}), 400
-
-    email = data.get("email")
-    password = data.get("password")
-
-    if not email or not password:
-        return jsonify({"error": "Email and password are required"}), 400
-
-    # 1. Find the user account by email
-    account = account_repo.find_account_by_email(email)
-    if not account:
-        return jsonify({"error": "Invalid email or password"}), 401 # 401 Unauthorized
-
-    # 2. Check if the provided password matches the hashed password in the DB
-    password_bytes = password.encode('utf-8')
-    hashed_password_bytes = account.get("password") # Should already be bytes from BSON
-
-    if bcrypt.checkpw(password_bytes, hashed_password_bytes):
-        # 3. Passwords match! Prepare user data to send back to the frontend.
-        # Do NOT send the password hash back.
-        user_data = {
-            "email": account.get("email"),
-            "firstName": account.get("firstName"),
-            "lastName": account.get("lastName"),
-            "role": account.get("role")
-        }
-        return jsonify({
-            "message": "Login successful!",
-            "user": user_data
-        }), 200
-    else:
-        # 4. Passwords do not match.
-        return jsonify({"error": "Invalid email or password"}), 401
-
-if __name__ == "__main__":
-    print("🚀 Starting Flask server on http://localhost:8000 ...")
-    app.run(host="0.0.0.0", port=8000, debug=True)
 </file>
 
 <file path="src/backend/db.py">
@@ -837,6 +375,28 @@ class UserProfileType(Enum):
             
 def get_user_profile_types():
     return [e.value for e in UserProfileType]
+</file>
+
+<file path="src/backend/repository/account_repo.py">
+# src/backend/repository/account_repo.py
+from typing import Optional, Dict, Any
+from ..db import get_db
+
+def accounts_collection():
+    """Returns a handle to the 'accounts' collection."""
+    return get_db()["accounts"]
+
+def find_account_by_email(email: str) -> Optional[dict]:
+    """
+    Finds a single account by its email (case-insensitive).
+    """
+    return accounts_collection().find_one({"email": {"$regex": f"^{email}$", "$options": "i"}})
+
+def insert_account(account_doc: Dict[str, Any]) -> None:
+    """
+    Inserts a new account document into the database.
+    """
+    accounts_collection().insert_one(account_doc)
 </file>
 
 <file path="src/backend/repository/application_repo.py">
@@ -1565,195 +1125,207 @@ REACT_APP_NL2GQL_ENDPOINT=http://localhost:8000/nl2gql
 </html>
 </file>
 
-<file path="src/frontend-react/src/App.css">
-/* --- Global Variables (Themes) --- */
-:root {
-    /* Light Theme Defaults */
-    --background-color: #f0f2f5;
-    --text-color: #1c1e21;
-    --card-background: #ffffff;
-    --border-color: #ccc;
-    --user-bubble-bg: #dcf8c6;
-    --assistant-bubble-bg: #e5e5e5;
-    --input-bg: #ffffff;
-    --button-bg: #1877f2;
-    --button-text: #ffffff;
+<file path="src/frontend-react/src/LoginPage.css">
+/* src/frontend-react/src/App.css */
+
+/* --- Add these styles to the end of the file --- */
+
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: var(--background-color);
 }
 
-/* Dark Theme Overrides */
-[data-theme='dark'] {
-    --background-color: #18191a;
-    --text-color: #e4e6eb;
-    --card-background: #242526;
-    --border-color: #3a3b3c;
-    --user-bubble-bg: #324e2c; /* Darker green */
-    --assistant-bubble-bg: #3a3b3c;
-    --input-bg: #3a3b3c;
-    --button-bg: #2d88ff;
-    --button-text: #ffffff;
+.login-form {
+  padding: 40px;
+  background-color: var(--card-background);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
 }
 
-/* --- Base Layout --- */
-body {
-    background-color: var(--background-color);
-    color: var(--text-color);
-    transition: background-color 0.3s, color 0.3s;
-    margin: 0;
+.login-form h2 {
+  margin-bottom: 25px;
+  color: var(--text-color);
 }
 
-.App {
-    max-width: 800px;
-    margin: 40px auto;
-    padding: 20px;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: var(--card-background);
-    border-radius: 10px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+.input-group {
+  margin-bottom: 20px;
+  text-align: left;
 }
 
-/* --- Header and Toggle --- */
-.header-container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
+.input-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--text-color);
 }
 
-.theme-toggle {
-    background: none;
-    border: 1px solid var(--border-color);
-    color: var(--text-color);
-    padding: 8px 15px;
-    cursor: pointer;
-    border-radius: 5px;
-    transition: background-color 0.3s, border-color 0.3s;
+.input-group input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  box-sizing: border-box; /* Ensures padding doesn't affect width */
 }
 
-.theme-toggle:hover {
-    background-color: var(--assistant-bubble-bg);
+.login-button {
+  width: 100%;
+  padding: 12px;
+  background-color: var(--button-bg);
+  color: var(--button-text);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  transition: background-color 0.2s;
 }
 
-/* --- Message Area --- */
-.message-container {
-    height: 500px;
-    overflow-y: auto;
-    border: 1px solid var(--border-color);
-    padding: 10px;
-    margin-bottom: 20px;
-    border-radius: 8px;
-    background-color: var(--card-background); /* Explicitly set for area */
+.login-button:hover {
+  background-color: #0b5cb0;
 }
 
-/* --- Chat Bubbles --- */
-.message {
-    display: flex;
-    margin-bottom: 15px;
-    flex-direction: column;
+.toggle-form {
+  margin-top: 20px;
+  font-size: 14px;
 }
 
-.user-message {
-    align-items: flex-end;
+.toggle-button {
+  background: none;
+  border: none;
+  color: var(--button-bg);
+  cursor: pointer;
+  font-weight: bold;
+  padding: 0 5px;
+  font-size: 14px;
 }
 
-.assistant-message {
-    align-items: flex-start;
+.input-group select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  box-sizing: border-box;
+  font-size: 16px; /* Match input font-size */
+  font-family: inherit; /* Inherit font from parent */
+  -webkit-appearance: none; /* Removes default browser styling on Safari/Chrome */
+  -moz-appearance: none; /* Removes default browser styling on Firefox */
+  appearance: none;
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 0.65em auto;
+}
+</file>
+
+<file path="src/frontend-react/src/LoginPage.js">
+// src/frontend-react/src/LoginPage.js
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import './LoginPage.css';
+
+const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'http://localhost:8000';
+
+function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('Applicant');
+  const [isLogin, setIsLogin] = useState(true);
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (isLogin) {
+      // --- Sign-In Logic ---
+      try {
+        const payload = { email, password };
+        const response = await axios.post(`${API_ENDPOINT}/login`, payload);
+        
+        // 1. Store user data in session storage upon successful login
+        sessionStorage.setItem('user', JSON.stringify(response.data.user));
+        
+        // 2. Redirect to the chat page
+        navigate('/chat');
+
+      } catch (error) {
+        if (error.response && error.response.data.error) {
+          alert(`Login failed: ${error.response.data.error}`);
+        } else {
+          alert('Login failed: An unknown error occurred.');
+        }
+        console.error('Login error:', error);
+      }
+    } else {
+      // --- Registration Logic (remains the same) ---
+      try {
+        const payload = { email, firstName, lastName, password, role };
+        const response = await axios.post(`${API_ENDPOINT}/register`, payload);
+
+        alert(response.data.message);
+        setIsLogin(true);
+        setEmail('');
+        setFirstName('');
+        setLastName('');
+        setPassword('');
+        setRole('Applicant');
+
+      } catch (error) {
+        if (error.response && error.response.data.error) {
+          alert(`Registration failed: ${error.response.data.error}`);
+        } else {
+          alert('Registration failed: An unknown error occurred.');
+        }
+        console.error('Registration error:', error);
+      }
+    }
+  };
+
+  // The JSX for the form remains unchanged
+  return (
+    <div className="login-container">
+      <form onSubmit={handleSubmit} className="login-form">
+        <h2>{isLogin ? 'Sign In to JobChat.AI' : 'Sign Up'}</h2>
+        {!isLogin && (
+          <>
+            <div className="input-group"><label>First Name</label><input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required /></div>
+            <div className="input-group"><label>Last Name</label><input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} required /></div>
+            <div className="input-group"><label>I am a</label><select value={role} onChange={(e) => setRole(e.target.value)} required><option value="Applicant">User / Applicant</option><option value="Recruiter">Recruiter</option></select></div>
+          </>
+        )}
+        <div className="input-group"><label>Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
+        <div className="input-group"><label>Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
+        <button type="submit" className="login-button">{isLogin ? 'Sign In' : 'Sign Up'}</button>
+        <p className="toggle-form">{isLogin ? "Don't have an account?" : "Already have an account?"}<button type="button" onClick={() => setIsLogin(!isLogin)} className="toggle-button">{isLogin ? 'Sign Up' : 'Sign In'}</button></p>
+      </form>
+    </div>
+  );
 }
 
-.message-bubble {
-    padding: 12px;
-    border-radius: 18px;
-    max-width: 80%;
-    word-wrap: break-word;
-    white-space: pre-wrap;
-    line-height: 1.5;
-}
+export default LoginPage;
+</file>
 
-.user-message .message-bubble {
-    background-color: var(--user-bubble-bg);
-    color: var(--text-color);
-}
-
-.assistant-message .message-bubble {
-    background-color: var(--assistant-bubble-bg);
-    color: var(--text-color);
-}
-
-.message-bubble strong {
-    font-weight: 600;
-    margin-bottom: 5px;
-    display: block;
-}
-
-/* --- Input Form --- */
-.input-form {
-    display: flex;
-    gap: 10px;
-}
-
-.input-form input {
-    flex-grow: 1;
-    padding: 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 20px;
-    background-color: var(--input-bg);
-    color: var(--text-color);
-    outline: none;
-}
-
-.input-form button {
-    padding: 12px 25px;
-    background-color: var(--button-bg);
-    color: var(--button-text);
-    border: none;
-    border-radius: 20px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.input-form button:hover:not(:disabled) {
-    background-color: #0b5cb0; /* Slightly darker blue */
-}
-
-.input-form button:disabled {
-    background-color: var(--border-color);
-    cursor: not-allowed;
-}
-
-/* Style for the code blocks in assistant messages */
-.message-bubble pre {
-    background-color: rgba(0, 0, 0, 0.05); /* Lighter background for code in bubble */
-    padding: 10px;
-    border-radius: 5px;
-    overflow-x: auto;
-    margin-top: 10px;
-}
-[data-theme='dark'] .message-bubble pre {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-.header-controls {
-    display: flex;
-    align-items: center;
-    gap: 15px; /* Adds space between the theme button and profile icon */
-}
-
-.profile-link {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-color); /* Makes the icon match the current text color */
-}
-
-.profile-icon {
-    width: 28px;
-    height: 28px;
-    cursor: pointer;
-    transition: opacity 0.2s;
-}
-
-.profile-link:hover .profile-icon {
-    opacity: 0.7; /* Fades the icon slightly on hover */
-}
+<file path="requirements.txt">
+# requirements.txt
+Flask
+ariadne
+pymongo
+python-dotenv
+requests
+streamlit
+bcrypt
 </file>
 
 <file path="src/backend/.env">
@@ -1764,6 +1336,243 @@ DB_NAME=jobtracker
 OLLAMA_HOST=https://ollama.com
 OLLAMA_MODEL=gpt-oss:120b-cloud  
 OLLAMA_API_KEY=2a5870ffa8ab469b879ab02999b684db.28nZHl4ZWnBXzrvzWFpiJ7DT
+</file>
+
+<file path="src/backend/app.py">
+import os
+import sys
+# Add project root (src/) to sys.path for absolute imports from src.backend.*
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+import bcrypt
+from src.backend.repository import account_repo
+import requests
+from flask_cors import CORS
+from flask import Flask, jsonify, request
+from ariadne import load_schema_from_path, make_executable_schema, graphql_sync
+from ariadne.explorer import ExplorerGraphiQL
+from dotenv import load_dotenv
+from werkzeug.exceptions import HTTPException
+from src.backend.models.user_models import UserProfileType
+
+# Load environment variables from the src directory
+load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
+
+# Import modules from the new structure
+from src.backend.errors import (
+    handle_http_exception,
+    handle_value_error,
+    handle_generic_exception,
+    # unwrap_graphql_errors is now only used inside the service
+    json_error,
+)
+# Import the NL2GQL service function
+from src.backend.services.nl2gql_service import process_nl2gql_request
+
+# Import resolvers for ALL entities
+from src.backend.resolvers.user_resolvers import query as user_query, mutation as user_mutation
+from src.backend.resolvers.job_resolvers import query as job_query, mutation as job_mutation
+from src.backend.resolvers.application_resolvers import query as app_query, mutation as app_mutation, application as application_object
+
+# Import for database counter initialization
+from src.backend.db import ensure_user_counter, ensure_job_counter, ensure_application_counter
+
+# --- Flask app setup ---
+app = Flask(__name__)
+CORS(app)
+explorer_html = ExplorerGraphiQL().html(None)
+
+# --- Load schema ---
+schema_path = os.path.join(os.path.dirname(__file__), "schema.graphql")
+type_defs = load_schema_from_path(schema_path)
+
+# Combine resolvers from all modules into a list
+schema = make_executable_schema(
+    type_defs,
+    [user_query, job_query, app_query],
+    [user_mutation, job_mutation, app_mutation],
+    application_object
+)
+
+# Initialize all database counters
+ensure_user_counter()
+ensure_job_counter()
+ensure_application_counter()
+
+# --- Error Handlers ---
+@app.errorhandler(404)
+def not_found(e):
+    return json_error("Not found", 404)
+
+@app.errorhandler(405)
+def method_not_allowed(e):
+    return json_error("Method not allowed", 405)
+
+@app.errorhandler(ValueError)
+def value_error(e):
+    return handle_value_error(e)
+
+@app.errorhandler(Exception)
+def unhandled_exception(e):
+    if isinstance(e, HTTPException):
+        return handle_http_exception(e)
+    return handle_generic_exception(e)
+
+# --- GraphQL endpoints (No Changes) ---
+@app.route("/graphql", methods=["GET"])
+def graphql_explorer():
+    return explorer_html, 200
+
+@app.route("/graphql", methods=["POST"])
+def graphql_server():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        # We call jsonify here because this is the final response layer
+        payload, status = json_error("Body must be JSON with 'query' and optional 'variables'", 400)
+        return jsonify(payload), status
+
+    success, result = graphql_sync(
+        schema,
+        data,
+        context_value={"request": request},
+        debug=app.debug,
+    )
+    # The main graphql endpoint doesn't need unwrap_graphql_errors,
+    # as it returns the standard GraphQL JSON response including the "errors" key.
+    return jsonify(result), (200 if success else 400)
+
+# --- Health check (No Changes) ---
+@app.route("/")
+def health():
+    return jsonify({"status": "Backend is running!"}), 200
+
+# --- NL2GQL Endpoint (Simplified) ---
+@app.route("/nl2gql", methods=["POST"])
+def nl2gql():
+    data = request.get_json(silent=True) or {}
+    user_text = data.get("query", "")
+    run_graphql = request.args.get("run", "true").lower() != "false"
+
+    if not isinstance(user_text, str) or not user_text.strip():
+        payload, status = json_error("Missing 'query' in body", 400)
+        return jsonify(payload), status
+
+    try:
+        with open(schema_path, "r", encoding="utf-8") as f:
+            schema_sdl = f.read()
+    except Exception as e:
+        payload, status = json_error(f"Failed to read schema: {e}", 500)
+        return jsonify(payload), status
+
+    def execute_graphql_query(gql_data):
+        return graphql_sync(
+            schema,
+            gql_data,
+            context_value={"request": request},
+            debug=app.debug,
+        )
+
+    # The service now reliably returns a (payload_dict, status_code) tuple
+    payload, status_code = process_nl2gql_request(
+        user_text, schema_sdl, run_graphql, execute_graphql_query
+    )
+
+    # We can now simply jsonify the payload and return it with its status
+    return jsonify(payload), status_code
+
+# --- NEW User Registration Endpoint ---
+@app.route("/register", methods=["POST"])
+def register_user():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    # 1. Extract and validate required fields, including the new 'role'
+    email = data.get("email")
+    password = data.get("password")
+    first_name = data.get("firstName")
+    last_name = data.get("lastName")
+    role = data.get("role")
+
+    if not all([email, password, first_name, last_name, role]):
+        return jsonify({"error": "Missing required fields: email, password, firstName, lastName, role"}), 400
+
+    # 2. Validate the role against our UserProfileType enum
+    try:
+        # This will check if 'role' is 'Applicant' or 'Recruiter' (case-insensitively)
+        # and will raise a ValueError if it's not.
+        validated_role = UserProfileType.from_str(role).value
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    # 3. Check if user already exists
+    if account_repo.find_account_by_email(email):
+        return jsonify({"error": f"An account with the email '{email}' already exists."}), 409
+
+    # 4. Hash the password
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+    # 5. Create the new user document with the validated role
+    new_account = {
+        "email": email.lower(),
+        "password": hashed_password,
+        "firstName": first_name,
+        "lastName": last_name,
+        "role": validated_role  # Add the role to the document
+    }
+
+    # 6. Insert into the database
+    try:
+        account_repo.insert_account(new_account)
+        return jsonify({
+            "message": "User registered successfully!",
+            "user": {"email": email, "role": validated_role}
+        }), 201
+    except Exception as e:
+        return jsonify({"error": f"An internal error occurred: {e}"}), 500
+    
+# --- NEW User Login Endpoint ---
+@app.route("/login", methods=["POST"])
+def login_user():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    email = data.get("email")
+    password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    # 1. Find the user account by email
+    account = account_repo.find_account_by_email(email)
+    if not account:
+        return jsonify({"error": "Invalid email or password"}), 401 # 401 Unauthorized
+
+    # 2. Check if the provided password matches the hashed password in the DB
+    password_bytes = password.encode('utf-8')
+    hashed_password_bytes = account.get("password") # Should already be bytes from BSON
+
+    if bcrypt.checkpw(password_bytes, hashed_password_bytes):
+        # 3. Passwords match! Prepare user data to send back to the frontend.
+        # Do NOT send the password hash back.
+        user_data = {
+            "email": account.get("email"),
+            "firstName": account.get("firstName"),
+            "lastName": account.get("lastName"),
+            "role": account.get("role")
+        }
+        return jsonify({
+            "message": "Login successful!",
+            "user": user_data
+        }), 200
+    else:
+        # 4. Passwords do not match.
+        return jsonify({"error": "Invalid email or password"}), 401
+
+if __name__ == "__main__":
+    print("🚀 Starting Flask server on http://localhost:8000 ...")
+    app.run(host="0.0.0.0", port=8000, debug=True)
 </file>
 
 <file path="src/backend/services/nl2gql_service.py">
@@ -1984,6 +1793,217 @@ def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, g
     return {"graphql": gql, "result": result}, (200 if success else 400)
 </file>
 
+<file path="src/frontend-react/src/App.css">
+/* src/frontend-react/src/App.css */
+
+/* --- Global Variables (Themes) --- */
+:root {
+    /* Light Theme Defaults */
+    --background-color: #f0f2f5;
+    --text-color: #1c1e21;
+    --card-background: #ffffff;
+    --border-color: #ccc;
+    --user-bubble-bg: #dcf8c6;
+    --assistant-bubble-bg: #e5e5e5;
+    --input-bg: #ffffff;
+    --button-bg: #1877f2;
+    --button-text: #ffffff;
+}
+
+/* Dark Theme Overrides */
+[data-theme='dark'] {
+    --background-color: #18191a;
+    --text-color: #e4e6eb;
+    --card-background: #242526;
+    --border-color: #3a3b3c;
+    --user-bubble-bg: #324e2c; /* Darker green */
+    --assistant-bubble-bg: #3a3b3c;
+    --input-bg: #3a3b3c;
+    --button-bg: #2d88ff;
+    --button-text: #ffffff;
+}
+
+/* --- Base Layout --- */
+body {
+    background-color: var(--background-color);
+    color: var(--text-color);
+    transition: background-color 0.3s, color 0.3s;
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.App {
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 20px;
+    background-color: var(--card-background);
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* --- Header --- */
+.header-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Adds space between header elements */
+}
+
+.theme-toggle {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 8px 15px;
+    cursor: pointer;
+    border-radius: 5px;
+    font-size: 14px; /* For emoji consistency */
+    line-height: 1; /* Aligns emoji better */
+    transition: background-color 0.3s, border-color 0.3s;
+}
+
+.theme-toggle:hover {
+    background-color: var(--assistant-bubble-bg);
+}
+
+/* --- Message Area --- */
+.message-container {
+    height: 500px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    background-color: var(--card-background);
+}
+
+/* --- Chat Bubbles --- */
+.message {
+    display: flex;
+    margin-bottom: 15px;
+    flex-direction: column;
+}
+
+.user-message {
+    align-items: flex-end;
+}
+
+.assistant-message {
+    align-items: flex-start;
+}
+
+.message-bubble {
+    padding: 12px;
+    border-radius: 18px;
+    max-width: 80%;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    line-height: 1.5;
+}
+
+.user-message .message-bubble {
+    background-color: var(--user-bubble-bg);
+    color: var(--text-color);
+}
+
+.assistant-message .message-bubble {
+    background-color: var(--assistant-bubble-bg);
+    color: var(--text-color);
+}
+
+.message-bubble strong {
+    font-weight: 600;
+    margin-bottom: 5px;
+    display: block;
+}
+
+/* --- Input Form --- */
+.input-form {
+    display: flex;
+    gap: 10px;
+}
+
+.input-form input {
+    flex-grow: 1;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    outline: none;
+    font-size: 16px;
+}
+
+.input-form button {
+    padding: 12px 25px;
+    background-color: var(--button-bg);
+    color: var(--button-text);
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.2s;
+}
+
+.input-form button:hover:not(:disabled) {
+    background-color: #0b5cb0; /* Slightly darker blue */
+}
+
+.input-form button:disabled {
+    background-color: var(--border-color);
+    cursor: not-allowed;
+}
+
+/* --- Code Blocks in Assistant Messages --- */
+.message-bubble pre {
+    background-color: rgba(0, 0, 0, 0.05);
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin-top: 10px;
+}
+
+[data-theme='dark'] .message-bubble pre {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* --- User Greeting and Logout Button Styles --- */
+.user-greeting {
+  font-weight: 600;
+  color: var(--text-color);
+  margin-right: 10px;
+}
+
+.logout-button {
+  background-color: #e4e6eb;
+  color: #1c1e21;
+  border: 1px solid var(--border-color);
+  padding: 8px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.logout-button:hover {
+  background-color: #d1d3d6;
+}
+
+[data-theme='dark'] .logout-button {
+  background-color: #3a3b3c;
+  color: #e4e6eb;
+}
+
+[data-theme='dark'] .logout-button:hover {
+  background-color: #4e4f50;
+}
+</file>
+
 <file path="src/frontend-react/src/index.js">
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -2007,7 +2027,7 @@ root.render(
 <file path="src/frontend-react/src/App.js">
 // src/frontend-react/src/App.js
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, Link } from 'react-router-dom';
+import { Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './App.css';
 import LoginPage from './LoginPage';
@@ -2018,14 +2038,14 @@ function ChatPage() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null); // State to hold user data
 
-  // --- This effect runs when the component loads ---
+  // --- This effect runs when the component loads to check for a logged-in user ---
   useEffect(() => {
     const storedUser = sessionStorage.getItem('user');
     if (storedUser) {
       // If user data exists in session, parse and set it to state
       setUser(JSON.parse(storedUser));
     } else {
-      // If no user, redirect to the login page
+      // If no user is found in session, redirect to the login page
       navigate('/login');
     }
   }, [navigate]);
@@ -2033,37 +2053,75 @@ function ChatPage() {
   const handleLogout = () => {
     // Clear user from session storage
     sessionStorage.removeItem('user');
-    // Clear user from state
+    // Clear user from component state
     setUser(null);
-    // Redirect to login page
+    // Redirect to the login page
     navigate('/login');
   };
 
-  // The rest of the ChatPage component state and functions
-  const [messages, setMessages] = useState(/* ... */);
+  // --- State and handlers for the chat functionality ---
+  const [messages, setMessages] = useState([
+    { role: 'assistant', content: "Hi! Ask me anything about users or jobs." }
+  ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
 
+  // Effect to apply the theme to the document
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
-  const formatContentForDisplay = (content) => { /* ... */ };
-  const handleSend = async (e) => { /* ... */ };
+  const toggleTheme = () => setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
 
+  const formatContentForDisplay = (content) => {
+    let html = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/```(.*?)\n([\s\S]*?)```/g, (match, p1, p2) => {
+        const escapedCode = p2.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<pre><code>${escapedCode}</code></pre>`;
+    });
+    return html;
+  };
 
-  // Render a loading state or nothing until the user check is complete
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+
+    const userPrompt = input.trim();
+    setMessages(prevMessages => [...prevMessages, { role: 'user', content: userPrompt }]);
+    setInput('');
+    setLoading(true);
+
+    let assistantText = '';
+    try {
+      const response = await axios.post(NL2GQL_ENDPOINT, { query: userPrompt });
+      const { graphql = "", result = {} } = response.data;
+
+      if (graphql === "Small talk handled by service logic" && result.response) {
+          assistantText = result.response;
+      } else {
+        assistantText = `**Generated GraphQL:**\n\n\`\`\`graphql\n${graphql}\n\`\`\`\n\n**Result:**\n\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
+      }
+    } catch (error) {
+      const err_msg = error.response?.data?.error?.message || "An unexpected error occurred while connecting to the service.";
+      assistantText = `**Error:** ${err_msg}`;
+    } finally {
+      setLoading(false);
+      setMessages(prevMessages => [...prevMessages, { role: 'assistant', content: assistantText }]);
+    }
+  };
+
+  // Render nothing (or a loading spinner) until the user check is complete
   if (!user) {
-    return null; // or a loading spinner
+    return null;
   }
 
+  // --- JSX for the ChatPage component ---
   return (
     <div className="App">
       <div className="header-container">
-        <h1>Job Seeker Chat (React)</h1>
+        <h1>JobChat.AI</h1>
         <div className="header-controls">
           <span className="user-greeting">Hi, {user.firstName}!</span>
           <button onClick={toggleTheme} className="theme-toggle">
@@ -2075,34 +2133,47 @@ function ChatPage() {
         </div>
       </div>
 
-      {/* The rest of the chat UI remains the same */}
       <div className="message-container">
         {messages.map((m, index) => (
           <div key={index} className={`message ${m.role}-message`}>
-            <div className="message-bubble" dangerouslySetInnerHTML={{ __html: formatContentForDisplay(m.content) }}/>
+            <div 
+              className="message-bubble" 
+              dangerouslySetInnerHTML={{ __html: formatContentForDisplay(m.content) }}
+            />
           </div>
         ))}
       </div>
+      
       <form onSubmit={handleSend} className="input-form">
-        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a request..." disabled={loading}/>
-        <button type="submit" disabled={loading}>{loading ? '...' : 'Send'}</button>
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type a request like 'find jobs in London'..."
+          disabled={loading}
+        />
+        <button type="submit" disabled={loading}>
+          {loading ? '...' : 'Send'}
+        </button>
       </form>
     </div>
   );
 }
 
 
+// --- Main App Component for Routing ---
 function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/chat" element={<ChatPage />} />
+      
+      {/* Set the default route to redirect to the chat page */}
       <Route path="/" element={<Navigate to="/chat" />} />
     </Routes>
   );
 }
 
-// THIS LINE WAS MISSING
 export default App;
 </file>
 

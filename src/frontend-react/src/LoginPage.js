@@ -67,7 +67,7 @@ function LoginPage() {
   return (
     <div className="login-container">
       <form onSubmit={handleSubmit} className="login-form">
-        <h2>{isLogin ? 'Sign In' : 'Sign Up'}</h2>
+        <h2>{isLogin ? 'Sign In to JobChat.AI' : 'Sign Up'}</h2>
         {!isLogin && (
           <>
             <div className="input-group"><label>First Name</label><input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required /></div>
