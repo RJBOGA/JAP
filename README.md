@@ -1,104 +1,159 @@
+# JobChat.AI - Conversational Job Portal
 
-# Job Portal App
+**JobChat.AI** is a modern web application that redefines how users interact with a job portal.  
+It features a **conversational AI interface** allowing users to find jobs, manage applications, and query user data using plain English.  
+The backend service translates natural language into **GraphQL** queries, offering a seamless and intuitive user experience.
 
-Lightweight job portal backend and Streamlit frontend for demo/testing purposes. This repository contains a Python-based GraphQL backend and a Streamlit frontend used to interact with job postings, applications and user data. It includes services for authentication, resume parsing and other helper components.
+---
 
-## Key features
+## 🚀 Key Features
 
-- GraphQL backend (schema under `src/backend/schema.graphql`) exposing jobs, users and applications.
-- Streamlit frontend demo app in `src/frontend/app_streamlit.py`.
-- Simple services for auth, resume parsing, embeddings and NL2GQL utilities.
-- Modular repository layout separating models, repositories, resolvers and services for easy testing and extension.
+- **Conversational AI Interface**  
+  A React-based chat UI where users can type requests like  
+  _"show me all python jobs in San Francisco"_ or _"create a user named Jane Doe"_.
 
-## Tech stack
+- **NL2GQL Service**  
+  A powerful backend service that uses an LLM (Large Language Model) to translate natural language into executable GraphQL queries in real time.
 
-- Python 3.10+ (recommended)
-- Streamlit for the frontend demo
-- GraphQL for the backend API
-- Pytest for tests
+- **Secure User Authentication**  
+  Full registration and login system with REST endpoints. Passwords are securely hashed using `bcrypt`.
 
-## Repository layout (important files)
+- **Rich Frontend Experience**  
+  A responsive single-page application built with React, featuring:
+  - Client-side routing with React Router (`/login`, `/chat`)
+  - Session management to keep users logged in
+  - Clean, formatted results display for database queries
+  - Collapsible view to inspect raw GraphQL and JSON data
+  - Dark/Light mode theme toggle
 
-- `src/backend/app.py` — backend application entrypoint
-- `src/backend/db.py` — database helpers
-- `src/backend/schema.graphql` — GraphQL schema
-- `src/backend/models/` — datamodels for jobs, users, applications
-- `src/backend/repository/` — repository layer (data access)
-- `src/backend/resolvers/` — GraphQL resolvers
-- `src/backend/services/` — application services (auth, resume_parser, embeddings, etc.)
-- `src/frontend/app_streamlit.py` — Streamlit demo frontend
-- `tests/` — unit tests for backend, frontend and services
+- **Robust Backend (Python + Flask)**  
+  - GraphQL API for structured data access (`/graphql`)
+  - REST endpoints for authentication (`/login`, `/register`)
+  - Dedicated endpoint for the NL2GQL service (`/nl2gql`)
 
-## Prerequisites
+---
 
-- Python 3.10 or newer installed and available on PATH as `python`.
-- A working PowerShell (this README includes PowerShell commands).
-- (Optional) Git to clone the repository.
+## 🧠 Tech Stack
 
-## Setup (Windows PowerShell)
+### Backend
+- **Framework:** Python, Flask  
+- **API:** Ariadne (GraphQL), REST  
+- **Database:** MongoDB (via PyMongo)  
+- **Security:** bcrypt  
+- **AI Service:** Ollama (or any compatible LLM endpoint)
 
-1. Create and activate a virtual environment:
+### Frontend
+- **Library:** React  
+- **Routing:** React Router (`react-router-dom`)  
+- **HTTP Client:** Axios  
+- **Styling:** Plain CSS with theme variables  
 
-```powershell
+---
+
+## 📁 Repository Layout
+
+| Path | Description |
+|------|--------------|
+| `src/backend/app.py` | Main Flask app with REST and GraphQL endpoints |
+| `src/backend/schema.graphql` | Defines the GraphQL schema |
+| `src/backend/services/nl2gql_service.py` | Translates natural language → GraphQL |
+| `src/backend/repository/` | Data access layer for MongoDB collections (`accounts`, `jobs`, etc.) |
+| `src/backend/resolvers/` | Business logic for the GraphQL API |
+| `src/frontend-react/src/App.js` | Main React component with routing |
+| `src/frontend-react/src/LoginPage.js` | Login and registration form |
+| `src/frontend-react/src/ResultsDisplay.js` | Renders formatted query results in chat |
+
+---
+
+## ⚙️ Prerequisites
+
+- **Python 3.10+** and `pip`  
+- **Node.js v16+** and `npm`  
+- **MongoDB** (running instance)  
+- **(Optional)** Git for cloning the repository  
+
+---
+
+## 🧩 Setup Instructions
+
+### 1️⃣ Clone the Repository
+```bash
+git clone <your-repository-url>
+cd <repository-folder>
+
+
+2️⃣ Backend Setup
+Create Virtual Environment
+# For Unix/macOS
+python3 -m venv .venv
+source .venv/bin/activate
+
+# For Windows
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
 
-2. Install dependencies:
+Install Dependencies
+pip install -r requirements.txt
 
-```powershell
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
+Configure Environment Variables
 
-If you plan to run only the frontend demo, installing the full `requirements.txt` is the simplest choice.
+Create a file at src/backend/.env with the following:
 
-## Running the backend
+# src/backend/.env
 
-Start the backend (from repository root):
+# MongoDB connection string
+MONGO_URI=mongodb://localhost:2717/
+DB_NAME=jobtracker
 
-```powershell
-python .\src\backend\app.py
-```
+# LLM service endpoint and credentials
+OLLAMA_HOST=https://ollama.com
+OLLAMA_MODEL=your-chosen-model
+OLLAMA_API_KEY=your-api-key
 
-This will start the backend service. The GraphQL endpoint and the exact host/port will depend on the implementation in `src/backend/app.py` (check that file for details). If the app exposes a `/graphql` endpoint, you can query it with a GraphQL client.
+3️⃣ Frontend Setup
 
-## Running the Streamlit frontend
+Navigate to the React app directory:
 
-Start the demo frontend (from repository root):
+cd src/frontend-react
 
-```powershell
-streamlit run .\src\frontend\app_streamlit.py
-```
 
-The Streamlit UI should open in your default browser and interact with the running backend (or mock data depending on configuration).
+Install Node.js dependencies:
 
-## Tests
+npm install
 
-Run the test suite with pytest (from repository root):
 
-```powershell
-pytest -q
-```
+💡 If any dependencies are missing, check package.json and re-run npm install.
 
-The `tests/` folder includes unit tests for repositories, resolvers and services.
+▶️ Running the Application
 
-## Development notes
+You must have both backend and frontend servers running.
 
-- Code is organized to separate concerns: models → repositories → resolvers → services.
-- If you add new dependencies, update `requirements.txt` and include them in the virtualenv.
-- Small, focused unit tests are included — please add tests for new behavior.
+Start the Backend
+python src/backend/app.py
 
-## Contributing
 
-1. Fork the repository and create a feature branch.
-2. Add tests for any new feature or bug fix.
-3. Submit a pull request with a clear description of changes.
+Server will run at http://localhost:8000
 
-## License & Author
+Start the Frontend
+cd src/frontend-react
+npm start
 
-This repository is maintained by RJBOGA. Include your preferred license file if you want to open-source this project (e.g., MIT, Apache-2.0).
 
-## Contact
+The React app will open at http://localhost:3000
 
-For questions or help, open an issue in the repository or contact the maintainer.
+You’ll be redirected to the chat page after login or sign-up.
+
+🤝 Contributing
+
+Fork the repository
+
+Create a feature branch (git checkout -b feature-name)
+
+Add tests for new features or bug fixes
+
+Submit a pull request with a clear description
+
+📜 License & Author
+
+This project is maintained by RJBOGA
+Licensed under the MIT License
