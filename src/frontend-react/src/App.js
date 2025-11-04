@@ -1,40 +1,37 @@
 // src/frontend-react/src/App.js
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './App.css';
 import LoginPage from './LoginPage';
+import ResultsDisplay from './ResultsDisplay'; // Import our new component
 
 const NL2GQL_ENDPOINT = process.env.REACT_APP_NL2GQL_ENDPOINT || 'http://localhost:8000/nl2gql';
 
 function ChatPage() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null); // State to hold user data
+  const [user, setUser] = useState(null);
 
-  // --- This effect runs when the component loads to check for a logged-in user ---
+  // --- This effect runs on component mount to check for a logged-in user ---
   useEffect(() => {
     const storedUser = sessionStorage.getItem('user');
     if (storedUser) {
-      // If user data exists in session, parse and set it to state
       setUser(JSON.parse(storedUser));
     } else {
-      // If no user is found in session, redirect to the login page
       navigate('/login');
     }
   }, [navigate]);
 
   const handleLogout = () => {
-    // Clear user from session storage
     sessionStorage.removeItem('user');
-    // Clear user from component state
     setUser(null);
-    // Redirect to the login page
     navigate('/login');
   };
 
-  // --- State and handlers for the chat functionality ---
+  // --- State and handlers for chat functionality ---
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! Ask me anything about users or jobs." }
+    // Each message is an object with a 'type', 'role', and 'payload'
+    { type: 'text', role: 'assistant', payload: { text: "Hi! Ask me anything about users or jobs." } }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -49,12 +46,8 @@ function ChatPage() {
   const toggleTheme = () => setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
 
   const formatContentForDisplay = (content) => {
-    let html = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/```(.*?)\n([\s\S]*?)```/g, (match, p1, p2) => {
-        const escapedCode = p2.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        return `<pre><code>${escapedCode}</code></pre>`;
-    });
-    return html;
+    // Basic formatting for bold text in simple messages
+    return content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   };
 
   const handleSend = async (e) => {
@@ -62,30 +55,32 @@ function ChatPage() {
     if (!input.trim() || loading) return;
 
     const userPrompt = input.trim();
-    setMessages(prevMessages => [...prevMessages, { role: 'user', content: userPrompt }]);
+    // Add the user's text message to the chat
+    setMessages(prev => [...prev, { type: 'text', role: 'user', payload: { text: userPrompt } }]);
     setInput('');
     setLoading(true);
 
-    let assistantText = '';
     try {
       const response = await axios.post(NL2GQL_ENDPOINT, { query: userPrompt });
       const { graphql = "", result = {} } = response.data;
 
       if (graphql === "Small talk handled by service logic" && result.response) {
-          assistantText = result.response;
+        // Handle conversational small talk as a simple text message
+        setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: result.response } }]);
       } else {
-        assistantText = `**Generated GraphQL:**\n\n\`\`\`graphql\n${graphql}\n\`\`\`\n\n**Result:**\n\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
+        // Add a 'results' type message to render with the special component
+        setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
       }
     } catch (error) {
       const err_msg = error.response?.data?.error?.message || "An unexpected error occurred while connecting to the service.";
-      assistantText = `**Error:** ${err_msg}`;
+      // Errors are displayed as simple text messages
+      setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: `**Error:** ${err_msg}` } }]);
     } finally {
       setLoading(false);
-      setMessages(prevMessages => [...prevMessages, { role: 'assistant', content: assistantText }]);
     }
   };
 
-  // Render nothing (or a loading spinner) until the user check is complete
+  // Render nothing while the authentication check is happening
   if (!user) {
     return null;
   }
@@ -109,10 +104,15 @@ function ChatPage() {
       <div className="message-container">
         {messages.map((m, index) => (
           <div key={index} className={`message ${m.role}-message`}>
-            <div 
-              className="message-bubble" 
-              dangerouslySetInnerHTML={{ __html: formatContentForDisplay(m.content) }}
-            />
+            {/* Conditionally render the ResultsDisplay or a plain text bubble */}
+            {m.type === 'results' ? (
+              <ResultsDisplay rawGql={m.payload.rawGql} rawJson={m.payload.rawJson} />
+            ) : (
+              <div
+                className="message-bubble"
+                dangerouslySetInnerHTML={{ __html: formatContentForDisplay(m.payload.text) }}
+              />
+            )}
           </div>
         ))}
       </div>

@@ -1,0 +1,111 @@
+/* src/frontend-react/src/ResultsDisplay.css */
+.results-display {
+    padding: 15px;
+    border-radius: 18px;
+    background-color: var(--assistant-bubble-bg);
+    color: var(--text-color);
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.results-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.result-item {
+    background-color: var(--card-background);
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.item-title {
+    font-weight: bold;
+    font-size: 1.1em;
+    color: var(--button-bg);
+}
+
+[data-theme='dark'] .item-title {
+    color: #61dafb;
+}
+
+.item-location {
+    font-size: 0.9em;
+    color: #666;
+}
+[data-theme='dark'] .item-location {
+    color: #aaa;
+}
+
+.item-company {
+    margin-bottom: 10px;
+    font-style: italic;
+}
+
+.item-skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.skill-tag {
+    background-color: var(--assistant-bubble-bg);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+}
+
+.details-toggle {
+    margin-top: 15px;
+    text-align: center;
+}
+
+.details-toggle button {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 6px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.details-toggle button:hover {
+    background-color: var(--border-color);
+}
+
+.raw-details {
+    margin-top: 15px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 10px;
+}
+
+.raw-details strong {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.raw-details pre {
+    background-color: rgba(0, 0, 0, 0.05);
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin-top: 5px;
+    white-space: pre-wrap;
+}
+
+[data-theme='dark'] .raw-details pre {
+    background-color: rgba(255, 255, 255, 0.1);
+}
