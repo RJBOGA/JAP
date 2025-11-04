@@ -19,15 +19,24 @@ function LoginPage() {
     e.preventDefault();
     
     if (isLogin) {
-      // --- Sign-In Logic ---
+      // --- Sign-In Logic with Persistent Session ---
       try {
         const payload = { email, password };
         const response = await axios.post(`${API_ENDPOINT}/login`, payload);
         
-        // 1. Store user data in session storage upon successful login
-        sessionStorage.setItem('user', JSON.stringify(response.data.user));
+        // 1. Calculate the expiration time (48 hours from now)
+        const expirationTime = new Date().getTime() + (48 * 60 * 60 * 1000); // 48 hours in milliseconds
+
+        // 2. Create an object to store both the user data and the expiry timestamp
+        const sessionData = {
+          user: response.data.user,
+          expiresAt: expirationTime,
+        };
+
+        // 3. Store this object in localStorage for persistence
+        localStorage.setItem('session', JSON.stringify(sessionData));
         
-        // 2. Redirect to the chat page
+        // 4. Redirect to the chat page
         navigate('/chat');
 
       } catch (error) {
@@ -39,13 +48,14 @@ function LoginPage() {
         console.error('Login error:', error);
       }
     } else {
-      // --- Registration Logic (remains the same) ---
+      // --- Registration Logic ---
       try {
         const payload = { email, firstName, lastName, password, role };
         const response = await axios.post(`${API_ENDPOINT}/register`, payload);
 
         alert(response.data.message);
-        setIsLogin(true);
+        setIsLogin(true); // Switch form to login mode on successful registration
+        // Clear all fields
         setEmail('');
         setFirstName('');
         setLastName('');
@@ -63,22 +73,51 @@ function LoginPage() {
     }
   };
 
-  // The JSX for the form remains unchanged
   return (
     <div className="login-container">
       <form onSubmit={handleSubmit} className="login-form">
-        <h2>{isLogin ? 'Sign In to JobChat.AI' : 'Sign Up'}</h2>
+        <h2>{isLogin ? 'Sign In to JobChat.AI' : 'Create Your Account'}</h2>
+        
         {!isLogin && (
           <>
-            <div className="input-group"><label>First Name</label><input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required /></div>
-            <div className="input-group"><label>Last Name</label><input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} required /></div>
-            <div className="input-group"><label>I am a</label><select value={role} onChange={(e) => setRole(e.target.value)} required><option value="Applicant">User / Applicant</option><option value="Recruiter">Recruiter</option></select></div>
+            <div className="input-group">
+              <label>First Name</label>
+              <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+            </div>
+            <div className="input-group">
+              <label>Last Name</label>
+              <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+            </div>
+            <div className="input-group">
+              <label>I am a</label>
+              <select value={role} onChange={(e) => setRole(e.target.value)} required>
+                <option value="Applicant">User / Applicant</option>
+                <option value="Recruiter">Recruiter</option>
+              </select>
+            </div>
           </>
         )}
-        <div className="input-group"><label>Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
-        <div className="input-group"><label>Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
-        <button type="submit" className="login-button">{isLogin ? 'Sign In' : 'Sign Up'}</button>
-        <p className="toggle-form">{isLogin ? "Don't have an account?" : "Already have an account?"}<button type="button" onClick={() => setIsLogin(!isLogin)} className="toggle-button">{isLogin ? 'Sign Up' : 'Sign In'}</button></p>
+
+        <div className="input-group">
+          <label>Email</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </div>
+
+        <div className="input-group">
+          <label>Password</label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </div>
+        
+        <button type="submit" className="login-button">
+          {isLogin ? 'Sign In' : 'Sign Up'}
+        </button>
+        
+        <p className="toggle-form">
+          {isLogin ? "Don't have an account?" : "Already have an account?"}
+          <button type="button" onClick={() => setIsLogin(!isLogin)} className="toggle-button">
+            {isLogin ? 'Sign Up' : 'Sign In'}
+          </button>
+        </p>
       </form>
     </div>
   );

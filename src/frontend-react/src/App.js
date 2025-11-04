@@ -4,7 +4,7 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './App.css';
 import LoginPage from './LoginPage';
-import ResultsDisplay from './ResultsDisplay'; // Import our new component
+import ResultsDisplay from './ResultsDisplay';
 
 const NL2GQL_ENDPOINT = process.env.REACT_APP_NL2GQL_ENDPOINT || 'http://localhost:8000/nl2gql';
 
@@ -12,25 +12,38 @@ function ChatPage() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
-  // --- This effect runs on component mount to check for a logged-in user ---
+  // --- This effect checks for a valid, non-expired session on component load ---
   useEffect(() => {
-    const storedUser = sessionStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    const sessionJSON = localStorage.getItem('session');
+    
+    if (sessionJSON) {
+      const session = JSON.parse(sessionJSON);
+      const now = new Date().getTime();
+
+      // Check if the session has expired
+      if (now > session.expiresAt) {
+        // If expired, clear the session from storage and redirect to login
+        localStorage.removeItem('session');
+        navigate('/login');
+      } else {
+        // If the session is valid, set the user state
+        setUser(session.user);
+      }
     } else {
+      // If no session exists at all, redirect to the login page
       navigate('/login');
     }
   }, [navigate]);
 
   const handleLogout = () => {
-    sessionStorage.removeItem('user');
+    // Clear the session from localStorage
+    localStorage.removeItem('session');
     setUser(null);
     navigate('/login');
   };
 
   // --- State and handlers for chat functionality ---
   const [messages, setMessages] = useState([
-    // Each message is an object with a 'type', 'role', and 'payload'
     { type: 'text', role: 'assistant', payload: { text: "Hi! Ask me anything about users or jobs." } }
   ]);
   const [input, setInput] = useState('');
@@ -46,7 +59,6 @@ function ChatPage() {
   const toggleTheme = () => setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
 
   const formatContentForDisplay = (content) => {
-    // Basic formatting for bold text in simple messages
     return content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   };
 
@@ -55,7 +67,6 @@ function ChatPage() {
     if (!input.trim() || loading) return;
 
     const userPrompt = input.trim();
-    // Add the user's text message to the chat
     setMessages(prev => [...prev, { type: 'text', role: 'user', payload: { text: userPrompt } }]);
     setInput('');
     setLoading(true);
@@ -65,22 +76,19 @@ function ChatPage() {
       const { graphql = "", result = {} } = response.data;
 
       if (graphql === "Small talk handled by service logic" && result.response) {
-        // Handle conversational small talk as a simple text message
         setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: result.response } }]);
       } else {
-        // Add a 'results' type message to render with the special component
         setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
       }
     } catch (error) {
       const err_msg = error.response?.data?.error?.message || "An unexpected error occurred while connecting to the service.";
-      // Errors are displayed as simple text messages
       setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: `**Error:** ${err_msg}` } }]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Render nothing while the authentication check is happening
+  // Render nothing until the authentication check is complete
   if (!user) {
     return null;
   }
@@ -104,7 +112,6 @@ function ChatPage() {
       <div className="message-container">
         {messages.map((m, index) => (
           <div key={index} className={`message ${m.role}-message`}>
-            {/* Conditionally render the ResultsDisplay or a plain text bubble */}
             {m.type === 'results' ? (
               <ResultsDisplay rawGql={m.payload.rawGql} rawJson={m.payload.rawJson} />
             ) : (
@@ -132,7 +139,6 @@ function ChatPage() {
     </div>
   );
 }
-
 
 // --- Main App Component for Routing ---
 function App() {
