@@ -1,3 +1,5 @@
+/* src/frontend-react/src/App.css */
+
 /* --- Global Variables (Themes) --- */
 :root {
     /* Light Theme Defaults */
@@ -31,24 +33,30 @@ body {
     color: var(--text-color);
     transition: background-color 0.3s, color 0.3s;
     margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .App {
     max-width: 800px;
     margin: 40px auto;
     padding: 20px;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: var(--card-background);
     border-radius: 10px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-/* --- Header and Toggle --- */
+/* --- Header --- */
 .header-container {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
+}
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Adds space between header elements */
 }
 
 .theme-toggle {
@@ -58,6 +66,8 @@ body {
     padding: 8px 15px;
     cursor: pointer;
     border-radius: 5px;
+    font-size: 14px; /* For emoji consistency */
+    line-height: 1; /* Aligns emoji better */
     transition: background-color 0.3s, border-color 0.3s;
 }
 
@@ -73,7 +83,7 @@ body {
     padding: 10px;
     margin-bottom: 20px;
     border-radius: 8px;
-    background-color: var(--card-background); /* Explicitly set for area */
+    background-color: var(--card-background);
 }
 
 /* --- Chat Bubbles --- */
@@ -130,6 +140,7 @@ body {
     background-color: var(--input-bg);
     color: var(--text-color);
     outline: none;
+    font-size: 16px;
 }
 
 .input-form button {
@@ -139,6 +150,7 @@ body {
     border: none;
     border-radius: 20px;
     cursor: pointer;
+    font-size: 16px;
     transition: background-color 0.2s;
 }
 
@@ -151,14 +163,46 @@ body {
     cursor: not-allowed;
 }
 
-/* Style for the code blocks in assistant messages */
+/* --- Code Blocks in Assistant Messages --- */
 .message-bubble pre {
-    background-color: rgba(0, 0, 0, 0.05); /* Lighter background for code in bubble */
+    background-color: rgba(0, 0, 0, 0.05);
     padding: 10px;
     border-radius: 5px;
     overflow-x: auto;
     margin-top: 10px;
 }
+
 [data-theme='dark'] .message-bubble pre {
     background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* --- User Greeting and Logout Button Styles --- */
+.user-greeting {
+  font-weight: 600;
+  color: var(--text-color);
+  margin-right: 10px;
+}
+
+.logout-button {
+  background-color: #e4e6eb;
+  color: #1c1e21;
+  border: 1px solid var(--border-color);
+  padding: 8px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.logout-button:hover {
+  background-color: #d1d3d6;
+}
+
+[data-theme='dark'] .logout-button {
+  background-color: #3a3b3c;
+  color: #e4e6eb;
+}
+
+[data-theme='dark'] .logout-button:hover {
+  background-color: #4e4f50;
 }

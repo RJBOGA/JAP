@@ -1,28 +1,52 @@
 // src/frontend-react/src/App.js
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom'; // Import routing components
+import { Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './App.css';
+import LoginPage from './LoginPage';
 
 const NL2GQL_ENDPOINT = process.env.REACT_APP_NL2GQL_ENDPOINT || 'http://localhost:8000/nl2gql';
 
-// 1. The original App component is now our ChatPage component
 function ChatPage() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null); // State to hold user data
+
+  // --- This effect runs when the component loads to check for a logged-in user ---
+  useEffect(() => {
+    const storedUser = sessionStorage.getItem('user');
+    if (storedUser) {
+      // If user data exists in session, parse and set it to state
+      setUser(JSON.parse(storedUser));
+    } else {
+      // If no user is found in session, redirect to the login page
+      navigate('/login');
+    }
+  }, [navigate]);
+
+  const handleLogout = () => {
+    // Clear user from session storage
+    sessionStorage.removeItem('user');
+    // Clear user from component state
+    setUser(null);
+    // Redirect to the login page
+    navigate('/login');
+  };
+
+  // --- State and handlers for the chat functionality ---
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! Ask me to create, list, update, or delete users in plain English." }
+    { role: 'assistant', content: "Hi! Ask me anything about users or jobs." }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
 
+  // Effect to apply the theme to the document
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
-  };
+  const toggleTheme = () => setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
 
   const formatContentForDisplay = (content) => {
     let html = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
@@ -38,50 +62,50 @@ function ChatPage() {
     if (!input.trim() || loading) return;
 
     const userPrompt = input.trim();
-    setMessages((prevMessages) => [...prevMessages, { role: 'user', content: userPrompt }]);
+    setMessages(prevMessages => [...prevMessages, { role: 'user', content: userPrompt }]);
     setInput('');
     setLoading(true);
 
     let assistantText = '';
-    
     try {
       const response = await axios.post(NL2GQL_ENDPOINT, { query: userPrompt });
-      const data = response.data;
-      const gql = data.graphql || "";
-      const result = data.result || {};
-      
-      if (gql === "Small talk handled by service logic" && result.response) {
+      const { graphql = "", result = {} } = response.data;
+
+      if (graphql === "Small talk handled by service logic" && result.response) {
           assistantText = result.response;
       } else {
-        assistantText = 
-          `**Generated GraphQL:**\n\n\`\`\`graphql\n${gql}\n\`\`\`\n\n` +
-          `**Result:**\n\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
+        assistantText = `**Generated GraphQL:**\n\n\`\`\`graphql\n${graphql}\n\`\`\`\n\n**Result:**\n\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
       }
     } catch (error) {
-      let err_msg = "An unexpected error occurred.";
-      if (error.response) {
-        const err = error.response.data?.error;
-        err_msg = err?.message || `NL→GQL service returned status ${error.response.status}.`;
-      } else if (error.request) {
-        err_msg = "Error: Could not connect to the NL→GQL service. Is the backend running?";
-      } else {
-        err_msg = `An unexpected error occurred: ${error.message}`;
-      }
+      const err_msg = error.response?.data?.error?.message || "An unexpected error occurred while connecting to the service.";
       assistantText = `**Error:** ${err_msg}`;
     } finally {
       setLoading(false);
-      setMessages((prevMessages) => [...prevMessages, { role: 'assistant', content: assistantText }]);
+      setMessages(prevMessages => [...prevMessages, { role: 'assistant', content: assistantText }]);
     }
   };
 
+  // Render nothing (or a loading spinner) until the user check is complete
+  if (!user) {
+    return null;
+  }
+
+  // --- JSX for the ChatPage component ---
   return (
     <div className="App">
       <div className="header-container">
-        <h1>Job Seeker Chat (React)</h1>
-        <button onClick={toggleTheme} className="theme-toggle">
-          {theme === 'light' ? '🌙 Dark Mode' : '☀️ Light Mode'}
-        </button>
+        <h1>JobChat.AI</h1>
+        <div className="header-controls">
+          <span className="user-greeting">Hi, {user.firstName}!</span>
+          <button onClick={toggleTheme} className="theme-toggle">
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
+          <button onClick={handleLogout} className="logout-button" title="Logout">
+            Logout
+          </button>
+        </div>
       </div>
+
       <div className="message-container">
         {messages.map((m, index) => (
           <div key={index} className={`message ${m.role}-message`}>
@@ -92,16 +116,17 @@ function ChatPage() {
           </div>
         ))}
       </div>
+      
       <form onSubmit={handleSend} className="input-form">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a request like 'create a user named Raj etc.,'."
+          placeholder="Type a request like 'find jobs in London'..."
           disabled={loading}
         />
         <button type="submit" disabled={loading}>
-          {loading ? 'Sending...' : 'Send'}
+          {loading ? '...' : 'Send'}
         </button>
       </form>
     </div>
@@ -109,14 +134,14 @@ function ChatPage() {
 }
 
 
-// 2. This is the new main App component that will handle all routing logic
+// --- Main App Component for Routing ---
 function App() {
   return (
     <Routes>
-      {/* This route makes the ChatPage component render at /chat */}
+      <Route path="/login" element={<LoginPage />} />
       <Route path="/chat" element={<ChatPage />} />
-
-      {/* This will redirect the user from the base URL (/) to /chat */}
+      
+      {/* Set the default route to redirect to the chat page */}
       <Route path="/" element={<Navigate to="/chat" />} />
     </Routes>
   );

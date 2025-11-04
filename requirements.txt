@@ -1,6 +1,8 @@
+# requirements.txt
 Flask
 ariadne
 pymongo
 python-dotenv
 requests
 streamlit
+bcrypt

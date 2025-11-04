@@ -3,6 +3,8 @@ import sys
 # Add project root (src/) to sys.path for absolute imports from src.backend.*
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
+import bcrypt
+from src.backend.repository import account_repo
 import requests
 from flask_cors import CORS
 from flask import Flask, jsonify, request
@@ -10,6 +12,7 @@ from ariadne import load_schema_from_path, make_executable_schema, graphql_sync
 from ariadne.explorer import ExplorerGraphiQL
 from dotenv import load_dotenv
 from werkzeug.exceptions import HTTPException
+from src.backend.models.user_models import UserProfileType
 
 # Load environment variables from the src directory
 load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
@@ -135,6 +138,96 @@ def nl2gql():
 
     # We can now simply jsonify the payload and return it with its status
     return jsonify(payload), status_code
+
+# --- NEW User Registration Endpoint ---
+@app.route("/register", methods=["POST"])
+def register_user():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    # 1. Extract and validate required fields, including the new 'role'
+    email = data.get("email")
+    password = data.get("password")
+    first_name = data.get("firstName")
+    last_name = data.get("lastName")
+    role = data.get("role")
+
+    if not all([email, password, first_name, last_name, role]):
+        return jsonify({"error": "Missing required fields: email, password, firstName, lastName, role"}), 400
+
+    # 2. Validate the role against our UserProfileType enum
+    try:
+        # This will check if 'role' is 'Applicant' or 'Recruiter' (case-insensitively)
+        # and will raise a ValueError if it's not.
+        validated_role = UserProfileType.from_str(role).value
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    # 3. Check if user already exists
+    if account_repo.find_account_by_email(email):
+        return jsonify({"error": f"An account with the email '{email}' already exists."}), 409
+
+    # 4. Hash the password
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+    # 5. Create the new user document with the validated role
+    new_account = {
+        "email": email.lower(),
+        "password": hashed_password,
+        "firstName": first_name,
+        "lastName": last_name,
+        "role": validated_role  # Add the role to the document
+    }
+
+    # 6. Insert into the database
+    try:
+        account_repo.insert_account(new_account)
+        return jsonify({
+            "message": "User registered successfully!",
+            "user": {"email": email, "role": validated_role}
+        }), 201
+    except Exception as e:
+        return jsonify({"error": f"An internal error occurred: {e}"}), 500
+    
+# --- NEW User Login Endpoint ---
+@app.route("/login", methods=["POST"])
+def login_user():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    email = data.get("email")
+    password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    # 1. Find the user account by email
+    account = account_repo.find_account_by_email(email)
+    if not account:
+        return jsonify({"error": "Invalid email or password"}), 401 # 401 Unauthorized
+
+    # 2. Check if the provided password matches the hashed password in the DB
+    password_bytes = password.encode('utf-8')
+    hashed_password_bytes = account.get("password") # Should already be bytes from BSON
+
+    if bcrypt.checkpw(password_bytes, hashed_password_bytes):
+        # 3. Passwords match! Prepare user data to send back to the frontend.
+        # Do NOT send the password hash back.
+        user_data = {
+            "email": account.get("email"),
+            "firstName": account.get("firstName"),
+            "lastName": account.get("lastName"),
+            "role": account.get("role")
+        }
+        return jsonify({
+            "message": "Login successful!",
+            "user": user_data
+        }), 200
+    else:
+        # 4. Passwords do not match.
+        return jsonify({"error": "Invalid email or password"}), 401
 
 if __name__ == "__main__":
     print("🚀 Starting Flask server on http://localhost:8000 ...")
