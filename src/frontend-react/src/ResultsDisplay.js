@@ -51,15 +51,19 @@ const UserResult = ({ user }) => (
     </div>
 );
 
-// A helper component to render the result of an application status update
+// A helper component to render an application card (for user's own applications)
 const ApplicationResult = ({ app }) => (
     <div className="result-item">
         <div className="item-header">
-            <span className="item-title">Application Status Updated</span>
+            <span className="item-title">{app.job?.title || 'N/A'}</span>
+            <span className="item-status">{app.status}</span>
         </div>
-        <div className="status-update-info">
-            Candidate **{app.candidate?.firstName} {app.candidate?.lastName}** for the position of **{app.job?.title}** has been moved to the **{app.status}** stage.
-        </div>
+        <div className="item-company">{app.job?.company || 'N/A'}</div>
+        {app.notes && (
+            <div className="item-notes">
+                <strong>Your Notes:</strong> {app.notes}
+            </div>
+        )}
     </div>
 );
 
@@ -72,11 +76,25 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
 
   // Check for different types of data and prepare the display content
   if (resultData) {
-      // Handles application status updates
-      if (resultData.updateApplicationStatusByNames) {
-          resultsContent = <ApplicationResult app={resultData.updateApplicationStatusByNames} />;
+      // Handles a list of the user's own applications
+      if (resultData.applications && Array.isArray(resultData.applications)) {
+          resultsContent = (
+              <div className="result-item job-applicant-container">
+                  <h3 className="container-title">Your Applications</h3>
+                  {resultData.applications.length > 0 ? (
+                      resultData.applications.map(app => <ApplicationResult key={app.appId} app={app} />)
+                  ) : (
+                      <p>You have not applied to any jobs yet.</p>
+                  )}
+              </div>
+          );
       }
-      // NEW: Handles a request for jobs that includes an application count
+      // Handles the result of updating an application status or adding a note
+      else if (resultData.updateApplicationStatusByNames || resultData.addNoteToApplicationByJob) {
+          const app = resultData.updateApplicationStatusByNames || resultData.addNoteToApplicationByJob;
+          resultsContent = <ApplicationResult app={app} />;
+      }
+      // Handles a request for jobs that includes an application count
       else if (resultData.jobs && Array.isArray(resultData.jobs) && resultData.jobs[0]?.applicationCount !== undefined) {
           resultsContent = resultData.jobs.map(job => (
               <div key={job.jobId} className="result-item application-count-result">
@@ -114,8 +132,8 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
           resultsContent = <UserResult user={resultData.userById} />;
 
       // Handles a successful user creation or update
-      } else if (resultData.createUser || resultData.updateUser) {
-          const user = resultData.createUser || resultData.updateUser;
+      } else if (resultData.createUser || resultData.updateUser || resultData.addSkillsToUser) {
+          const user = resultData.createUser || resultData.updateUser || resultData.addSkillsToUser;
           resultsContent = (
             <div>
               <p>✅ Success! User profile updated:</p>
@@ -125,7 +143,7 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
       }
   }
   
-  // Fallback for successful operations that don't return a list or known object
+  // Fallback for successful operations that don't return a known data structure
   if (!resultsContent && rawJson?.data) {
       resultsContent = <p>✅ The operation was successful. View details for the raw response.</p>;
   // Fallback for GraphQL errors

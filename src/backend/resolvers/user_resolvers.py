@@ -89,3 +89,23 @@ def resolve_delete_user_by_fields(*_, firstName=None, lastName=None, dob=None):
     if len(matches) > 1: raise ValueError("Multiple users matched; add more filters to target a single user")
     
     return user_repo.delete_one(q) == 1
+
+# --- ADD THIS NEW MUTATION RESOLVER AT THE END OF THE FILE ---
+@mutation.field("addSkillsToUser")
+def resolve_add_skills_to_user(obj, info, UserID, skills):
+    # --- AUTHORIZATION CHECK ---
+    # A user can only add skills to their own profile.
+    logged_in_user = info.context.get("user")
+    if not logged_in_user or logged_in_user.get("UserID") != UserID:
+        raise ValueError("Permission denied: You can only add skills to your own profile.")
+
+    if not skills:
+        raise ValueError("The 'skills' list cannot be empty.")
+
+    # Call our new repository function
+    updated_user = user_repo.add_skills_to_user(UserID, skills)
+    
+    if not updated_user:
+        raise ValueError(f"User with ID {UserID} not found.")
+        
+    return user_repo.to_user_output(updated_user)

@@ -415,33 +415,6 @@ def get_user_profile_types():
     return [e.value for e in UserProfileType]
 </file>
 
-<file path="src/backend/repository/application_repo.py">
-from typing import Optional, Dict, Any, List
-from pymongo import ReturnDocument
-from ..db import applications_collection
-
-def find_applications(q: Dict[str, Any]) -> List[dict]:
-    """Finds multiple applications in the database."""
-    return list(applications_collection().find(q, {"_id": 0}))
-
-def find_application_by_id(app_id: int) -> Optional[dict]:
-    """Finds a single application by its unique appId."""
-    return applications_collection().find_one({"appId": int(app_id)}, {"_id": 0})
-
-def insert_application(doc: dict) -> None:
-    """Inserts a new application document into the database."""
-    applications_collection().insert_one(doc)
-
-def update_one_application(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Optional[dict]:
-    """Finds one application and updates it."""
-    return applications_collection().find_one_and_update(
-        q,
-        {"$set": set_fields},
-        projection={"_id": 0},
-        return_document=ReturnDocument.AFTER,
-    )
-</file>
-
 <file path="src/backend/validators/common_validators.py">
 import re
 from typing import Optional, Dict, Any
@@ -651,138 +624,6 @@ export default apiClient;
 }
 </file>
 
-<file path="src/frontend-react/src/ResultsDisplay.css">
-/* src/frontend-react/src/ResultsDisplay.css */
-.results-display {
-    padding: 15px;
-    border-radius: 18px;
-    background-color: var(--assistant-bubble-bg);
-    color: var(--text-color);
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
-}
-
-.results-summary {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.result-item {
-    background-color: var(--card-background);
-    padding: 15px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-}
-
-.item-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 5px;
-}
-
-.item-title {
-    font-weight: bold;
-    font-size: 1.1em;
-    color: var(--button-bg);
-}
-
-[data-theme='dark'] .item-title {
-    color: #61dafb;
-}
-
-.item-location {
-    font-size: 0.9em;
-    color: #666;
-}
-[data-theme='dark'] .item-location {
-    color: #aaa;
-}
-
-.item-company {
-    margin-bottom: 10px;
-    font-style: italic;
-}
-
-.item-skills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 10px;
-}
-
-.skill-tag {
-    background-color: var(--assistant-bubble-bg);
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 0.8em;
-}
-
-.details-toggle {
-    margin-top: 15px;
-    text-align: center;
-}
-
-.details-toggle button {
-    background: none;
-    border: 1px solid var(--border-color);
-    color: var(--text-color);
-    padding: 6px 12px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 0.9em;
-    font-weight: 500;
-}
-
-.details-toggle button:hover {
-    background-color: var(--border-color);
-}
-
-.raw-details {
-    margin-top: 15px;
-    border-top: 1px solid var(--border-color);
-    padding-top: 10px;
-}
-
-.raw-details strong {
-    display: block;
-    margin-bottom: 5px;
-}
-
-.raw-details pre {
-    background-color: rgba(0, 0, 0, 0.05);
-    padding: 10px;
-    border-radius: 5px;
-    overflow-x: auto;
-    margin-top: 5px;
-    white-space: pre-wrap;
-}
-
-[data-theme='dark'] .raw-details pre {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-.job-applicant-container {
-    background-color: var(--background-color);
-}
-
-.container-title {
-    margin-top: 0;
-    margin-bottom: 15px;
-    font-size: 1.2em;
-    color: var(--text-color);
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 10px;
-}
-
-.status-update-info {
-    line-height: 1.6;
-    font-size: 1.05em;
-}
-</file>
-
 <file path="README.md">
 # JobChat.AI - Conversational Job Portal
 
@@ -955,6 +796,37 @@ OLLAMA_MODEL=gpt-oss:120b-cloud
 OLLAMA_API_KEY=2a5870ffa8ab469b879ab02999b684db.28nZHl4ZWnBXzrvzWFpiJ7DT
 </file>
 
+<file path="src/backend/repository/application_repo.py">
+from typing import Optional, Dict, Any, List
+from pymongo import ReturnDocument
+from ..db import applications_collection
+
+def find_applications(q: Dict[str, Any]) -> List[dict]:
+    """Finds multiple applications in the database."""
+    return list(applications_collection().find(q, {"_id": 0}))
+
+def find_application_by_id(app_id: int) -> Optional[dict]:
+    """Finds a single application by its unique appId."""
+    return applications_collection().find_one({"appId": int(app_id)}, {"_id": 0})
+
+def insert_application(doc: dict) -> None:
+    """Inserts a new application document into the database."""
+    applications_collection().insert_one(doc)
+
+def update_one_application(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Optional[dict]:
+    """Finds one application and updates it."""
+    return applications_collection().find_one_and_update(
+        q,
+        {"$set": set_fields},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+
+def count_applications(query: Dict[str, Any]) -> int:
+    """Counts the number of documents in the applications collection matching a query."""
+    return applications_collection().count_documents(query)
+</file>
+
 <file path="src/backend/repository/job_repo.py">
 # src/backend/repository/job_repo.py
 import re
@@ -1087,161 +959,6 @@ def delete_one(q: Dict[str, Any]) -> int:
     """Deletes one user matching the query."""
     res = users_collection().delete_one(q)
     return int(res.deleted_count)
-</file>
-
-<file path="src/backend/resolvers/application_resolvers.py">
-# src/backend/resolvers/application_resolvers.py
-from datetime import datetime
-from ariadne import QueryType, MutationType, ObjectType
-from ..db import next_application_id, to_application_output
-from ..validators.common_validators import clean_update_input
-from ..repository import user_repo, job_repo, application_repo
-
-query = QueryType()
-mutation = MutationType()
-application = ObjectType("Application")
-
-job = ObjectType("Job")
-
-@job.field("applicants")
-def resolve_job_applicants(job_obj, info):
-    """Resolver for the 'applicants' field on the Job type."""
-    # 1. Get the jobId from the parent job object
-    job_id = job_obj.get("jobId")
-    if not job_id:
-        return []
-
-    # 2. Find all applications for this job
-    applications = application_repo.find_applications({"jobId": job_id})
-    if not applications:
-        return []
-
-    # 3. Extract all the user IDs from the applications
-    user_ids = [app.get("userId") for app in applications]
-    if not user_ids:
-        return []
-
-    # 4. Find all user profiles that match the extracted IDs
-    applicant_docs = user_repo.find_users({"UserID": {"$in": user_ids}}, None, None)
-    
-    # 5. Format and return the list of user objects
-    return [user_repo.to_user_output(doc) for doc in applicant_docs]
-
-@query.field("applications")
-def resolve_applications(*_, userId=None, jobId=None, status=None):
-    q = {}
-    if userId: q["userId"] = int(userId)
-    if jobId: q["jobId"] = int(jobId)
-    if status: q["status"] = status
-    docs = application_repo.find_applications(q)
-    return [to_application_output(d) for d in docs]
-
-@query.field("applicationById")
-def resolve_application_by_id(*_, appId):
-    doc = application_repo.find_application_by_id(int(appId))
-    if not doc: raise ValueError(f"Application with ID {appId} not found.")
-    return to_application_output(doc)
-
-@application.field("candidate")
-def resolve_application_candidate(app_obj, _):
-    user_id = app_obj.get("userId")
-    if not user_id: return None
-    user_doc = user_repo.find_one_by_id(user_id)
-    return user_repo.to_user_output(user_doc)
-
-@application.field("job")
-def resolve_application_job(app_obj, _):
-    job_id = app_obj.get("jobId")
-    if not job_id: return None
-    job_doc = job_repo.find_job_by_id(job_id)
-    return job_repo.to_job_output(job_doc)
-
-@mutation.field("createApplication")
-def resolve_create_application(*_, input):
-    user_id, job_id = input.get("userId"), input.get("jobId")
-    if not user_repo.find_one_by_id(user_id): raise ValueError(f"Validation failed: User with ID {user_id} does not exist.")
-    if not job_repo.find_job_by_id(job_id): raise ValueError(f"Validation failed: Job with ID {job_id} does not exist.")
-    doc = {
-        "appId": next_application_id(), "userId": user_id, "jobId": job_id,
-        "status": "Applied", "submittedAt": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-        "notes": input.get("notes")
-    }
-    application_repo.insert_application(doc)
-    return to_application_output(doc)
-
-@mutation.field("apply")
-def resolve_apply(*_, userName, jobTitle, companyName=None):
-    name_parts = userName.strip().split()
-    first_name, last_name = (name_parts[0], " ".join(name_parts[1:])) if len(name_parts) > 1 else (name_parts[0], None)
-    if not first_name: raise ValueError("User name cannot be empty.")
-
-    # --- CORRECTED FUNCTION CALL ---
-    user_filter = user_repo.build_filter(first_name, last_name, None, None)
-    matching_users = user_repo.find_users(user_filter, None, None)
-    
-    if len(matching_users) == 0: raise ValueError(f"Could not find a user named '{userName}'.")
-    if len(matching_users) > 1: raise ValueError(f"Found multiple users named '{userName}'. Please be more specific.")
-    user = matching_users[0]
-    
-    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
-    matching_jobs = job_repo.find_jobs(job_filter, None, None)
-    if len(matching_jobs) == 0: raise ValueError(f"Could not find a job with title '{jobTitle}' at company '{companyName or ''}'.")
-    if len(matching_jobs) > 1: raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
-    job = matching_jobs[0]
-
-    application_input = {"userId": user["UserID"], "jobId": job["jobId"]}
-    return resolve_create_application(None, input=application_input)
-
-@mutation.field("updateApplication")
-def resolve_update_application(*_, appId, input):
-    set_fields = clean_update_input(input)
-    if not set_fields: raise ValueError("No fields provided to update.")
-    updated = application_repo.update_one_application({"appId": int(appId)}, set_fields)
-    if not updated: raise ValueError(f"Application with ID {appId} not found for update.")
-    return to_application_output(updated)
-
-# --- ADD THIS NEW MUTATION RESOLVER ---
-@mutation.field("updateApplicationStatusByNames")
-def resolve_update_application_status_by_names(obj, info, userName, jobTitle, newStatus, companyName=None):
-    # --- 1. AUTHORIZATION CHECK ---
-    user_role = info.context.get("user_role")
-    if user_role != "Recruiter":
-        raise ValueError("Permission denied: You must be a Recruiter to update an application.")
-
-    # --- 2. FIND THE USER (Reusing logic from 'apply') ---
-    name_parts = userName.strip().split()
-    first_name = name_parts[0] if name_parts else None
-    last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else None
-    if not first_name:
-        raise ValueError("A user name must be provided.")
-
-    user_filter = user_repo.build_filter(first_name, last_name, None, None)
-    matching_users = user_repo.find_users(user_filter, None, None)
-    if not matching_users:
-        raise ValueError(f"Could not find a user named '{userName}'.")
-    if len(matching_users) > 1:
-        raise ValueError(f"Found multiple users named '{userName}'. Please be more specific.")
-    user = matching_users[0]
-    
-    # --- 3. FIND THE JOB (Reusing logic from 'apply') ---
-    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
-    matching_jobs = job_repo.find_jobs(job_filter, None, None)
-    if not matching_jobs:
-        raise ValueError(f"Could not find a job with title '{jobTitle}' at company '{companyName or ''}'.")
-    if len(matching_jobs) > 1:
-        raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
-    job = matching_jobs[0]
-
-    # --- 4. FIND AND UPDATE THE APPLICATION ---
-    application_filter = {"userId": user["UserID"], "jobId": job["jobId"]}
-    update_fields = {"status": newStatus}
-    
-    updated_application = application_repo.update_one_application(application_filter, update_fields)
-    
-    if not updated_application:
-        raise ValueError(f"No application found for user '{userName}' at job '{jobTitle}'.")
-        
-    return to_application_output(updated_application)
 </file>
 
 <file path="src/backend/resolvers/job_resolvers.py">
@@ -1472,6 +1189,334 @@ def resolve_delete_user_by_fields(*_, firstName=None, lastName=None, dob=None):
     return user_repo.delete_one(q) == 1
 </file>
 
+<file path="src/frontend-react/src/index.js">
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+import App from './App';
+import './App.css';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+      <BrowserRouter>  {/* Wrap App with BrowserRouter */}
+      <App />
+    </BrowserRouter>
+  </React.StrictMode>
+);
+
+// Note: A real setup would also need an HTML file (index.html) 
+// and potentially CSS, but 'react-scripts start' handles index.html creation.
+</file>
+
+<file path="src/frontend-react/src/ResultsDisplay.css">
+/* src/frontend-react/src/ResultsDisplay.css */
+.results-display {
+    padding: 15px;
+    border-radius: 18px;
+    background-color: var(--assistant-bubble-bg);
+    color: var(--text-color);
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.results-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.result-item {
+    background-color: var(--card-background);
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.item-title {
+    font-weight: bold;
+    font-size: 1.1em;
+    color: var(--button-bg);
+}
+
+[data-theme='dark'] .item-title {
+    color: #61dafb;
+}
+
+.item-location {
+    font-size: 0.9em;
+    color: #666;
+}
+[data-theme='dark'] .item-location {
+    color: #aaa;
+}
+
+.item-company {
+    margin-bottom: 10px;
+    font-style: italic;
+}
+
+.item-skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.skill-tag {
+    background-color: var(--assistant-bubble-bg);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+}
+
+.details-toggle {
+    margin-top: 15px;
+    text-align: center;
+}
+
+.details-toggle button {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 6px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.details-toggle button:hover {
+    background-color: var(--border-color);
+}
+
+.raw-details {
+    margin-top: 15px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 10px;
+}
+
+.raw-details strong {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.raw-details pre {
+    background-color: rgba(0, 0, 0, 0.05);
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin-top: 5px;
+    white-space: pre-wrap;
+}
+
+[data-theme='dark'] .raw-details pre {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.job-applicant-container {
+    background-color: var(--background-color);
+}
+
+.container-title {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.2em;
+    color: var(--text-color);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+}
+
+.status-update-info {
+    line-height: 1.6;
+    font-size: 1.05em;
+}
+
+.application-count-result {
+    font-size: 1.1em;
+    font-weight: 500;
+    text-align: center;
+}
+</file>
+
+<file path="requirements.txt">
+# requirements.txt
+Flask
+ariadne
+pymongo
+python-dotenv
+requests
+streamlit
+bcrypt
+Faker
+</file>
+
+<file path="src/backend/resolvers/application_resolvers.py">
+# src/backend/resolvers/application_resolvers.py
+from datetime import datetime
+from ariadne import QueryType, MutationType, ObjectType
+from ..db import next_application_id, to_application_output
+from ..validators.common_validators import clean_update_input
+from ..repository import user_repo, job_repo, application_repo
+
+query = QueryType()
+mutation = MutationType()
+application = ObjectType("Application")
+job = ObjectType("Job")
+
+@job.field("applicants")
+def resolve_job_applicants(job_obj, info):
+    """Resolver for the 'applicants' field on the Job type."""
+    job_id = job_obj.get("jobId")
+    if not job_id: return []
+
+    applications = application_repo.find_applications({"jobId": job_id})
+    if not applications: return []
+
+    user_ids = [app.get("userId") for app in applications]
+    if not user_ids: return []
+
+    applicant_docs = user_repo.find_users({"UserID": {"$in": user_ids}}, None, None)
+    return [user_repo.to_user_output(doc) for doc in applicant_docs]
+
+@query.field("applications")
+def resolve_applications(*_, userId=None, jobId=None, status=None):
+    q = {}
+    if userId: q["userId"] = int(userId)
+    if jobId: q["jobId"] = int(jobId)
+    if status: q["status"] = status
+    docs = application_repo.find_applications(q)
+    return [to_application_output(d) for d in docs]
+
+@query.field("applicationById")
+def resolve_application_by_id(*_, appId):
+    doc = application_repo.find_application_by_id(int(appId))
+    if not doc: raise ValueError(f"Application with ID {appId} not found.")
+    return to_application_output(doc)
+
+@application.field("candidate")
+def resolve_application_candidate(app_obj, _):
+    user_id = app_obj.get("userId")
+    if not user_id: return None
+    user_doc = user_repo.find_one_by_id(user_id)
+    return user_repo.to_user_output(user_doc)
+
+@application.field("job")
+def resolve_application_job(app_obj, _):
+    job_id = app_obj.get("jobId")
+    if not job_id: return None
+    job_doc = job_repo.find_job_by_id(job_id)
+    return job_repo.to_job_output(job_doc)
+
+@mutation.field("createApplication")
+def resolve_create_application(*_, input):
+    user_id, job_id = input.get("userId"), input.get("jobId")
+    if not user_repo.find_one_by_id(user_id): raise ValueError(f"Validation failed: User with ID {user_id} does not exist.")
+    if not job_repo.find_job_by_id(job_id): raise ValueError(f"Validation failed: Job with ID {job_id} does not exist.")
+    doc = {
+        "appId": next_application_id(), "userId": user_id, "jobId": job_id,
+        "status": "Applied", "submittedAt": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "notes": input.get("notes")
+    }
+    application_repo.insert_application(doc)
+    return to_application_output(doc)
+
+@mutation.field("apply")
+def resolve_apply(*_, userName, jobTitle, companyName=None):
+    name_parts = userName.strip().split()
+    first_name, last_name = (name_parts[0], " ".join(name_parts[1:])) if len(name_parts) > 1 else (name_parts[0], None)
+    if not first_name: raise ValueError("User name cannot be empty.")
+
+    # --- CORRECTED FUNCTION CALL ---
+    user_filter = user_repo.build_filter(first_name, last_name, None, None)
+    matching_users = user_repo.find_users(user_filter, None, None)
+    
+    if len(matching_users) == 0: raise ValueError(f"Could not find a user named '{userName}'.")
+    if len(matching_users) > 1: raise ValueError(f"Found multiple users named '{userName}'. Please be more specific.")
+    user = matching_users[0]
+    
+    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
+    matching_jobs = job_repo.find_jobs(job_filter, None, None)
+    if len(matching_jobs) == 0: raise ValueError(f"Could not find a job with title '{jobTitle}' at company '{companyName or ''}'.")
+    if len(matching_jobs) > 1: raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
+    job = matching_jobs[0]
+
+    application_input = {"userId": user["UserID"], "jobId": job["jobId"]}
+    return resolve_create_application(None, input=application_input)
+
+@mutation.field("updateApplication")
+def resolve_update_application(*_, appId, input):
+    set_fields = clean_update_input(input)
+    if not set_fields: raise ValueError("No fields provided to update.")
+    updated = application_repo.update_one_application({"appId": int(appId)}, set_fields)
+    if not updated: raise ValueError(f"Application with ID {appId} not found for update.")
+    return to_application_output(updated)
+
+# --- ADD THIS NEW MUTATION RESOLVER ---
+@mutation.field("updateApplicationStatusByNames")
+def resolve_update_application_status_by_names(obj, info, userName, jobTitle, newStatus, companyName=None):
+    # 1. AUTHORIZATION CHECK
+    user_role = info.context.get("user_role")
+    if user_role != "Recruiter":
+        raise ValueError("Permission denied: You must be a Recruiter to update an application.")
+
+    # 2. FIND THE USER
+    name_parts = userName.strip().split()
+    first_name = name_parts[0] if name_parts else None
+    last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else None
+    if not first_name: raise ValueError("A user name must be provided.")
+
+    user_filter = user_repo.build_filter(first_name, last_name, None, None)
+    matching_users = user_repo.find_users(user_filter, None, None)
+    if not matching_users: raise ValueError(f"Could not find a user named '{userName}'.")
+    if len(matching_users) > 1: raise ValueError(f"Found multiple users named '{userName}'. Please be more specific.")
+    user = matching_users[0]
+    
+    # 3. FIND THE JOB
+    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
+    matching_jobs = job_repo.find_jobs(job_filter, None, None)
+    if not matching_jobs: raise ValueError(f"Could not find a job with title '{jobTitle}' at company '{companyName or ''}'.")
+    if len(matching_jobs) > 1: raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
+    job_doc = matching_jobs[0]
+
+    # 4. FIND AND UPDATE THE APPLICATION
+    application_filter = {"userId": user["UserID"], "jobId": job_doc["jobId"]}
+    update_fields = {"status": newStatus}
+    
+    updated_application = application_repo.update_one_application(application_filter, update_fields)
+    
+    if not updated_application:
+        raise ValueError(f"No application found for user '{userName}' at job '{jobTitle}'.")
+        
+    # --- 5. THE FIX: Construct the full response object ---
+    # Manually combine the updated application data with the user and job objects
+    # that we already have in memory.
+    response_data = to_application_output(updated_application)
+    response_data["candidate"] = user_repo.to_user_output(user)
+    response_data["job"] = job_repo.to_job_output(job_doc)
+    
+    return response_data
+
+@job.field("applicationCount")
+def resolve_job_application_count(job_obj, info):
+    """Resolver for the 'applicationCount' field on the Job type."""
+    job_id = job_obj.get("jobId")
+    if not job_id:
+        return 0
+    
+    # Use our new, efficient counting function
+    count = application_repo.count_applications({"jobId": job_id})
+    return count
+</file>
+
 <file path="src/backend/schema.graphql">
 # src/backend/schema.graphql
 
@@ -1542,6 +1587,7 @@ type Job {
   description: String
   postedAt: String
   applicants: [User!]
+  applicationCount: Int!
 }
 
 input JobInput {
@@ -1618,542 +1664,7 @@ type Mutation {
   Updates an application's status by finding it via user and job names.
   """
   updateApplicationStatusByNames(userName: String!, jobTitle: String!, companyName: String, newStatus: String!): Application
-  createApplication(input: ApplicationInput!): Application!
-  apply(userName: String!, jobTitle: String!, companyName: String): Application!
-  updateApplication(appId: Int!, input: ApplicationUpdateInput!): Application
 }
-</file>
-
-<file path="src/frontend-react/src/index.js">
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
-import App from './App';
-import './App.css';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-      <BrowserRouter>  {/* Wrap App with BrowserRouter */}
-      <App />
-    </BrowserRouter>
-  </React.StrictMode>
-);
-
-// Note: A real setup would also need an HTML file (index.html) 
-// and potentially CSS, but 'react-scripts start' handles index.html creation.
-</file>
-
-<file path="src/frontend-react/src/ResultsDisplay.js">
-// src/frontend-react/src/ResultsDisplay.js
-import React, { useState } from 'react';
-import './ResultsDisplay.css';
-
-// A small helper component to render a single Job
-const JobResult = ({ job }) => (
-  <div className="result-item">
-    <div className="item-header">
-      <span className="item-title">{job.title || 'N/A'}</span>
-      <span className="item-location">{job.location || 'N/A'}</span>
-    </div>
-    <div className="item-company">{job.company || 'N/A'}</div>
-    {job.skillsRequired && job.skillsRequired.length > 0 && (
-      <div className="item-skills">
-        {job.skillsRequired.map(skill => <span key={skill} className="skill-tag">{skill}</span>)}
-      </div>
-    )}
-  </div>
-);
-
-// An enhanced component to render a single, detailed User profile
-const UserResult = ({ user }) => (
-    <div className="result-item">
-        <div className="item-header">
-            <span className="item-title">{user.firstName} {user.lastName}</span>
-            <span className="item-location">{user.city && user.country ? `${user.city}, ${user.country}` : ''}</span>
-        </div>
-        <div className="item-subtitle">{user.professionalTitle || 'No professional title provided'}</div>
-        
-        {user.years_of_experience != null && (
-            <div className="item-detail">
-                <strong>Experience:</strong> {user.years_of_experience} years
-            </div>
-        )}
-        {user.highest_qualification && (
-            <div className="item-detail">
-                <strong>Qualification:</strong> {user.highest_qualification}
-            </div>
-        )}
-
-        {user.skills && user.skills.length > 0 && (
-            <div className="item-skills">
-                {user.skills.map(skill => <span key={skill} className="skill-tag">{skill}</span>)}
-            </div>
-        )}
-
-        <div className="item-links">
-            {user.linkedin_profile && <a href={user.linkedin_profile} target="_blank" rel="noopener noreferrer">LinkedIn</a>}
-            {user.portfolio_url && <a href={user.portfolio_url} target="_blank" rel="noopener noreferrer">Portfolio</a>}
-        </div>
-    </div>
-);
-
-// A new helper component to render the result of an application status update
-const ApplicationResult = ({ app }) => (
-    <div className="result-item">
-        <div className="item-header">
-            <span className="item-title">Application Status Updated</span>
-        </div>
-        <div className="status-update-info">
-            Candidate **{app.candidate?.firstName} {app.candidate?.lastName}** for the position of **{app.job?.title}** has been moved to the **{app.status}** stage.
-        </div>
-    </div>
-);
-
-
-const ResultsDisplay = ({ rawGql, rawJson }) => {
-  const [detailsVisible, setDetailsVisible] = useState(false);
-
-  let resultsContent = null;
-  const resultData = rawJson?.data;
-
-  // Check for different types of data and prepare the display content
-  if (resultData) {
-      // Handles the result of our new application status update mutation
-      if (resultData.updateApplicationStatusByNames) {
-          resultsContent = <ApplicationResult app={resultData.updateApplicationStatusByNames} />;
-      }
-      // Handles a request for jobs that includes a nested list of applicants
-      else if (resultData.jobs && Array.isArray(resultData.jobs) && resultData.jobs[0]?.applicants) {
-          resultsContent = resultData.jobs.map(job => (
-              <div key={job.jobId} className="result-item job-applicant-container">
-                  <h3 className="container-title">Applicants for: {job.title} at {job.company}</h3>
-                  {job.applicants.length > 0 ? (
-                      job.applicants.map(applicant => <UserResult key={applicant.UserID} user={applicant} />)
-                  ) : (
-                      <p>No applicants found for this job yet.</p>
-                  )}
-              </div>
-          ));
-      }
-      // Handles a simple list of jobs
-      else if (resultData.jobs && Array.isArray(resultData.jobs)) {
-          resultsContent = resultData.jobs.length > 0
-            ? resultData.jobs.map(job => <JobResult key={job.jobId} job={job} />)
-            : <p>No jobs found matching your criteria.</p>;
-      
-      // Handles a list of users
-      } else if (resultData.users && Array.isArray(resultData.users)) {
-          resultsContent = resultData.users.length > 0
-            ? resultData.users.map(user => <UserResult key={user.UserID} user={user} />)
-            : <p>No users found matching your criteria.</p>;
-
-      // Handles a single user lookup
-      } else if (resultData.userById) {
-          resultsContent = <UserResult user={resultData.userById} />;
-
-      // Handles a successful user creation or update
-      } else if (resultData.createUser || resultData.updateUser) {
-          const user = resultData.createUser || resultData.updateUser;
-          resultsContent = (
-            <div>
-              <p>✅ Success! User profile updated:</p>
-              <UserResult user={user} />
-            </div>
-          );
-      }
-  }
-  
-  // Fallback for successful operations that don't return a list or known object
-  if (!resultsContent && rawJson?.data) {
-      resultsContent = <p>✅ The operation was successful. View details for the raw response.</p>;
-  // Fallback for GraphQL errors
-  } else if (!resultsContent && rawJson?.errors) {
-      resultsContent = <p>❌ An error occurred. See details for more information.</p>;
-  }
-
-  return (
-    <div className="results-display">
-      <div className="results-summary">
-        {resultsContent}
-      </div>
-      
-      <div className="details-toggle">
-        <button onClick={() => setDetailsVisible(!detailsVisible)}>
-          {detailsVisible ? 'Hide GraphQL & JSON' : 'Show GraphQL & JSON'}
-        </button>
-      </div>
-
-      {detailsVisible && (
-        <div className="raw-details">
-          <strong>Generated GraphQL:</strong>
-          <pre>{rawGql}</pre>
-          
-          <strong>Result JSON:</strong>
-          <pre>{JSON.stringify(rawJson, null, 2)}</pre>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default ResultsDisplay;
-</file>
-
-<file path="requirements.txt">
-# requirements.txt
-Flask
-ariadne
-pymongo
-python-dotenv
-requests
-streamlit
-bcrypt
-Faker
-</file>
-
-<file path="src/backend/app.py">
-# src/backend/app.py
-import os
-import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-
-import bcrypt
-import requests
-from flask_cors import CORS
-from flask import Flask, jsonify, request
-from ariadne import load_schema_from_path, make_executable_schema, graphql_sync
-from ariadne.explorer import ExplorerGraphiQL
-from dotenv import load_dotenv
-from werkzeug.exceptions import HTTPException
-from datetime import datetime
-
-# Import backend modules
-from src.backend.models.user_models import UserProfileType
-from src.backend.errors import handle_http_exception, handle_value_error, handle_generic_exception, json_error
-from src.backend.services.nl2gql_service import process_nl2gql_request
-from src.backend.repository import user_repo
-from src.backend.db import ensure_user_counter, ensure_job_counter, ensure_application_counter, next_user_id
-
-# Import resolvers
-from src.backend.resolvers.user_resolvers import query as user_query, mutation as user_mutation
-from src.backend.resolvers.job_resolvers import query as job_query, mutation as job_mutation
-from src.backend.resolvers.application_resolvers import query as app_query, mutation as app_mutation, application as application_object, job
-# Load environment variables
-load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
-
-# --- Flask app setup ---
-app = Flask(__name__)
-CORS(app)
-explorer_html = ExplorerGraphiQL().html(None)
-
-# --- Load GraphQL schema ---
-schema_path = os.path.join(os.path.dirname(__file__), "schema.graphql")
-type_defs = load_schema_from_path(schema_path)
-schema = make_executable_schema(
-    type_defs,
-    [user_query, job_query, app_query],
-    [user_mutation, job_mutation, app_mutation],
-    application_object,
-    job  
-)
-
-# Initialize database counters
-ensure_user_counter()
-ensure_job_counter()
-ensure_application_counter()
-
-# --- Error Handlers ---
-@app.errorhandler(HTTPException)
-def http_error(e): return handle_http_exception(e)
-@app.errorhandler(ValueError)
-def value_error(e): return handle_value_error(e)
-@app.errorhandler(Exception)
-def unhandled_exception(e): return handle_generic_exception(e)
-
-# --- GraphQL endpoints ---
-@app.route("/graphql", methods=["GET"])
-def graphql_explorer(): return explorer_html, 200
-@app.route("/graphql", methods=["POST"])
-def graphql_server():
-    data = request.get_json(silent=True)
-    user_role = request.headers.get("X-User-Role", "Applicant")
-    success, result = graphql_sync(
-        schema, 
-        data, 
-        context_value={"request": request, "user_role": user_role}, 
-        debug=app.debug
-    )
-    return jsonify(result), (200 if success else 400)
-
-# --- Health check ---
-@app.route("/")
-def health(): return jsonify({"status": "Backend is running!"}), 200
-
-# --- NL2GQL Endpoint ---
-@app.route("/nl2gql", methods=["POST"])
-def nl2gql():
-    data = request.get_json(silent=True) or {}
-    user_text = data.get("query", "")
-    user_context = data.get("userContext")
-    run_graphql = request.args.get("run", "true").lower() != "false"
-    with open(schema_path, "r", encoding="utf-8") as f: schema_sdl = f.read()
-
-    # --- THIS IS THE FUNCTION THAT NEEDED TO BE FIXED ---
-    def execute_graphql_query(gql_data):
-        # 1. Read the role from the header within this function's scope
-        user_role = request.headers.get("X-User-Role", "Applicant")
-        
-        # 2. Pass the role into the context for this specific execution
-        return graphql_sync(
-            schema, 
-            gql_data, 
-            context_value={"request": request, "user_role": user_role}, 
-            debug=app.debug
-        )
-
-    payload, status_code = process_nl2gql_request(
-        user_text, schema_sdl, run_graphql, execute_graphql_query, user_context
-    )
-    return jsonify(payload), status_code
-
-# --- User Registration Endpoint ---
-@app.route("/register", methods=["POST"])
-def register_user():
-    data = request.get_json()
-    if not data: return jsonify({"error": "Invalid JSON body"}), 400
-    
-    email, password, first_name, last_name, role = data.get("email"), data.get("password"), data.get("firstName"), data.get("lastName"), data.get("role")
-    if not all([email, password, first_name, last_name, role]):
-        return jsonify({"error": "Missing required fields"}), 400
-    try:
-        validated_role = UserProfileType.from_str(role).value
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-
-    if user_repo.find_user_by_email(email):
-        return jsonify({"error": f"An account with the email '{email}' already exists."}), 409
-
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-
-    new_user_doc = {
-        "UserID": next_user_id(), "email": email.lower(), "password": hashed_password,
-        "firstName": first_name, "lastName": last_name, "role": validated_role,
-        "phone_number": None, "city": None, "state_province": None, "country": None,
-        "linkedin_profile": None, "portfolio_url": None, "highest_qualification": None,
-        "years_of_experience": None, "createdAt": datetime.utcnow().isoformat(),
-        "dob": None, "skills": [], "professionalTitle": None
-    }
-
-    try:
-        user_repo.insert_user(new_user_doc)
-        return jsonify({"message": "User registered successfully!"}), 201
-    except Exception as e:
-        return jsonify({"error": f"An internal error occurred: {e}"}), 500
-    
-# --- User Login Endpoint ---
-@app.route("/login", methods=["POST"])
-def login_user():
-    data = request.get_json()
-    if not data: return jsonify({"error": "Invalid JSON body"}), 400
-    email, password = data.get("email"), data.get("password")
-    if not email or not password: return jsonify({"error": "Email and password are required"}), 400
-
-    user = user_repo.find_user_by_email(email)
-    if not user: return jsonify({"error": "Invalid email or password"}), 401
-
-    if bcrypt.checkpw(password.encode('utf-8'), user.get("password")):
-        user_data = user_repo.to_user_output(user)
-        return jsonify({"message": "Login successful!", "user": user_data}), 200
-    else:
-        return jsonify({"error": "Invalid email or password"}), 401
-
-if __name__ == "__main__":
-    print("🚀 Starting Flask server on http://localhost:8000 ...")
-    app.run(host="0.0.0.0", port=8000, debug=True)
-</file>
-
-<file path="src/backend/services/nl2gql_service.py">
-# src/backend/services/nl2gql_service.py
-import os
-import requests
-import json
-from typing import Optional
-from dotenv import load_dotenv
-
-env_path = os.path.join(os.path.dirname(__file__), '../../.env')
-load_dotenv(dotenv_path=env_path)
-
-from ..errors import json_error, unwrap_graphql_errors
-
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "https://ollama.com")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:120b-cloud")
-OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
-OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
-
-
-# --- RESTORED: The more comprehensive small talk handler ---
-def handle_small_talk(user_text: str):
-    """
-    Checks for a wide range of conversational phrases (greetings, idioms, etc.)
-    and returns a predefined friendly response to bypass the LLM.
-    """
-    clean_text = user_text.lower().strip()
-    words = clean_text.split()
-    
-    # --- Category 1: Direct Matches (Greetings, Gratitude, Interjections) ---
-    small_talk_map = {
-        "hi": "Hello there! How can I assist with your job data today?",
-        "hello": "Hi! I'm ready to convert your requests into GraphQL. What can I do?",
-        "hey": "Hey! Let me know what data you need to query or update.",
-        "greetings": "Greetings! I'm here to help with your job portal data via NL2GQL.",
-        "thanks": "You're welcome! I'm happy to help.",
-        "thank you": "My pleasure! Just ask if you have more queries.",
-        "wow": "Glad to impress! Do you have a query for me?",
-        "cool": "I think so too! Ready for your next command.",
-        "awesome": "I strive for excellence! Ready for a command.",
-        "oops": "Mistakes happen! Please try your query again.",
-        "sorry": "No worries at all. What is your request?",
-        "how are you": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
-        "what's up": "Just monitoring the database for your requests. What can I do for you?",
-        "how are you doing today": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
-    }
-    
-    # --- Category 2: Idioms, Common Phrases & Discourse Markers (Keyword Matching) ---
-    keyword_responses = {
-        "by the way": "Interesting point. Do you have a job or user query for me?",
-        "i mean": "I understand. Please formulate your query clearly.",
-        "just saying": "Got it. I'm waiting for a command that maps to GraphQL.",
-        "you know": "I know what you mean. Focus on what data you need.",
-        "hold on": "Okay, I'll hold. Let me know when you have a request.",
-        "excuse me": "No problem. How can I help with the data?",
-        "can you help me": "Absolutely! I can help by converting your request into a GraphQL query.",
-        "can i ask": "You can ask. I can answer if it involves querying or mutating job portal data.",
-    }
-    
-    default_response_payload = {
-        "graphql": "Small talk handled by service logic", 
-        "result": {
-            "response": (
-                "Hello! I'm your GraphQL assistant. I can help with job portal data. "
-                "Try asking me to:\n- **Find** jobs: *find jobs for Java developer in London*\n"
-                "- **Update** your profile: *update my professional title to Senior Developer*"
-            )
-        }
-    }
-    
-    # 1. Check for Direct Matches
-    if clean_text in small_talk_map:
-        return {"graphql": "Small talk handled by service logic", "result": {"response": small_talk_map[clean_text]}}, 200
-        
-    # 2. Check for Keyword Matches
-    for key, response in keyword_responses.items():
-        if key in clean_text:
-            return {"graphql": "Small talk handled by service logic", "result": {"response": response}}, 200
-
-    # 3. Check for short multi-word greetings or questions to the bot
-    if words:
-        is_greeting = words[0] in ["hi", "hello", "hey"]
-        is_vocative = "assistant" in words or "bot" in words or "jobchat" in words
-        
-        if (is_greeting or is_vocative) and len(words) <= 5:
-            # Return the default, guiding response for these cases
-            return default_response_payload, 200
-        
-    return None
-
-# --- UPDATED Prompt Builder (Keeps the userContext logic) ---
-def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[dict]) -> str:
-    context_str = ""
-    if user_context and user_context.get("UserID"):
-        user_id = user_context["UserID"]
-        first_name = user_context.get("firstName", "the user")
-        context_str = (
-            f"\n\nContext:\n"
-            f"- The request is from a logged-in user named '{first_name}' with UserID: {user_id}.\n"
-            f"- When the user refers to 'me', 'my', or 'I', you MUST use their UserID ({user_id}) to target the operation (e.g., in an `updateUser` mutation).\n"
-        )
-
-    return (
-        "You are an expert GraphQL assistant. Your task is to convert the user's natural language request "
-        "into a single, valid GraphQL operation that adheres strictly to the provided schema. "
-        "Return ONLY the GraphQL operation with no explanations or markdown fences."
-        f"{context_str}"
-        "\n\nKey Instructions:\n"
-        "- When a user wants to **UPDATE the STATUS** of an application (e.g., 'interview', 'reject', 'hire'), you **MUST** use the `updateApplicationStatusByNames` mutation.\n"
-        "- When a user wants to see **applicants**, **candidates**, or people who **applied** for a job, you **MUST** query the `jobs` field with a filter and request the nested `applicants` field within it.\n"
-        "- When a user wants to **ADD** skills to a job, you **MUST** use the `addSkillsToJob` mutation. For all other job updates, use the `updateJob` mutation.\n"
-        "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation.\n"
-        "- When a user wants to **DELETE** or **REMOVE** a job using its title and company, you **MUST** use the `deleteJobByFields` mutation.\n"
-        "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation.\n"
-        "- For other actions, use the appropriate query or mutation.\n"
-        "- If the user's request cannot be mapped to any field in the schema, return the single word: INVALID.\n"
-        "- Do not make up fields or assume logic not present in the schema.\n\n"
-        "Schema:\n"
-        f"{schema_sdl}\n\n"
-        "User request:\n"
-        f"\"{user_text}\""
-    )
-
-def extract_graphql(text: str) -> str:
-    """Extracts a GraphQL query from a markdown block or plain text."""
-    if "```" in text:
-        parts = text.split("```")
-        for part in parts:
-            if "query" in part or "mutation" in part or "{" in part:
-                return part.replace("graphql", "").strip()
-    return text.strip()
-
-# --- UPDATED Service Processor (Keeps the userContext logic) ---
-def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, graphql_executor_fn, user_context: Optional[dict]):
-    small_talk_response = handle_small_talk(user_text)
-    if small_talk_response:
-        return small_talk_response
-    
-    if not OLLAMA_API_KEY:
-        return json_error("NL2GQL Service Error: OLLAMA_API_KEY is missing in environment configuration.", 500)
-        
-    prompt = build_nl2gql_prompt(user_text, schema_sdl, user_context)
-
-    headers = {"Authorization": f"Bearer {OLLAMA_API_KEY}"}
-
-    try:
-        resp = requests.post(
-            OLLAMA_GENERATE_URL,
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            headers=headers,
-            timeout=90,
-        )
-    except requests.exceptions.RequestException as e:
-        return json_error(f"Ollama network error: {e}", 502)
-
-    if not resp.ok:
-        try:
-            err_details = resp.json().get("error", resp.text)
-            return json_error(f"LLM Error {resp.status_code}: {err_details}", 502)
-        except (json.JSONDecodeError, ValueError):
-            return json_error(f"Ollama returned a non-JSON error (Status: {resp.status_code}).", 502)
-
-    try:
-        gen_body = resp.json()
-        gen = gen_body.get("response", "")
-        gql = extract_graphql(gen)
-    except (ValueError, IndexError):
-        return json_error("Failed to parse the response from the LLM.", 502)
-
-    if not gql or gql.strip().upper() == "INVALID":
-        return json_error("Your request could not be mapped to a valid operation. Please try rephrasing.", 400)
-
-    if not run_graphql:
-        return {"graphql": gql}, 200
-
-    success, result = graphql_executor_fn({"query": gql})
-    
-    wrapped_error = unwrap_graphql_errors(result)
-    if wrapped_error:
-        return wrapped_error 
-
-    return {"graphql": gql, "result": result}, (200 if success else 400)
 </file>
 
 <file path="src/frontend-react/src/App.css">
@@ -2504,6 +2015,515 @@ function LoginPage() {
 }
 
 export default LoginPage;
+</file>
+
+<file path="src/frontend-react/src/ResultsDisplay.js">
+// src/frontend-react/src/ResultsDisplay.js
+import React, { useState } from 'react';
+import './ResultsDisplay.css';
+
+// A small helper component to render a single Job
+const JobResult = ({ job }) => (
+  <div className="result-item">
+    <div className="item-header">
+      <span className="item-title">{job.title || 'N/A'}</span>
+      <span className="item-location">{job.location || 'N/A'}</span>
+    </div>
+    <div className="item-company">{job.company || 'N/A'}</div>
+    {job.skillsRequired && job.skillsRequired.length > 0 && (
+      <div className="item-skills">
+        {job.skillsRequired.map(skill => <span key={skill} className="skill-tag">{skill}</span>)}
+      </div>
+    )}
+  </div>
+);
+
+// An enhanced component to render a single, detailed User profile
+const UserResult = ({ user }) => (
+    <div className="result-item">
+        <div className="item-header">
+            <span className="item-title">{user.firstName} {user.lastName}</span>
+            <span className="item-location">{user.city && user.country ? `${user.city}, ${user.country}` : ''}</span>
+        </div>
+        <div className="item-subtitle">{user.professionalTitle || 'No professional title provided'}</div>
+        
+        {user.years_of_experience != null && (
+            <div className="item-detail">
+                <strong>Experience:</strong> {user.years_of_experience} years
+            </div>
+        )}
+        {user.highest_qualification && (
+            <div className="item-detail">
+                <strong>Qualification:</strong> {user.highest_qualification}
+            </div>
+        )}
+
+        {user.skills && user.skills.length > 0 && (
+            <div className="item-skills">
+                {user.skills.map(skill => <span key={skill} className="skill-tag">{skill}</span>)}
+            </div>
+        )}
+
+        <div className="item-links">
+            {user.linkedin_profile && <a href={user.linkedin_profile} target="_blank" rel="noopener noreferrer">LinkedIn</a>}
+            {user.portfolio_url && <a href={user.portfolio_url} target="_blank" rel="noopener noreferrer">Portfolio</a>}
+        </div>
+    </div>
+);
+
+// A helper component to render the result of an application status update
+const ApplicationResult = ({ app }) => (
+    <div className="result-item">
+        <div className="item-header">
+            <span className="item-title">Application Status Updated</span>
+        </div>
+        <div className="status-update-info">
+            Candidate **{app.candidate?.firstName} {app.candidate?.lastName}** for the position of **{app.job?.title}** has been moved to the **{app.status}** stage.
+        </div>
+    </div>
+);
+
+
+const ResultsDisplay = ({ rawGql, rawJson }) => {
+  const [detailsVisible, setDetailsVisible] = useState(false);
+
+  let resultsContent = null;
+  const resultData = rawJson?.data;
+
+  // Check for different types of data and prepare the display content
+  if (resultData) {
+      // Handles application status updates
+      if (resultData.updateApplicationStatusByNames) {
+          resultsContent = <ApplicationResult app={resultData.updateApplicationStatusByNames} />;
+      }
+      // NEW: Handles a request for jobs that includes an application count
+      else if (resultData.jobs && Array.isArray(resultData.jobs) && resultData.jobs[0]?.applicationCount !== undefined) {
+          resultsContent = resultData.jobs.map(job => (
+              <div key={job.jobId} className="result-item application-count-result">
+                  The job "**{job.title}**" at **{job.company}** has **{job.applicationCount}** application(s).
+              </div>
+          ));
+      }
+      // Handles a request for jobs with nested applicants
+      else if (resultData.jobs && Array.isArray(resultData.jobs) && resultData.jobs[0]?.applicants) {
+          resultsContent = resultData.jobs.map(job => (
+              <div key={job.jobId} className="result-item job-applicant-container">
+                  <h3 className="container-title">Applicants for: {job.title} at {job.company}</h3>
+                  {job.applicants.length > 0 ? (
+                      job.applicants.map(applicant => <UserResult key={applicant.UserID} user={applicant} />)
+                  ) : (
+                      <p>No applicants found for this job yet.</p>
+                  )}
+              </div>
+          ));
+      }
+      // Handles a simple list of jobs
+      else if (resultData.jobs && Array.isArray(resultData.jobs)) {
+          resultsContent = resultData.jobs.length > 0
+            ? resultData.jobs.map(job => <JobResult key={job.jobId} job={job} />)
+            : <p>No jobs found matching your criteria.</p>;
+      
+      // Handles a list of users
+      } else if (resultData.users && Array.isArray(resultData.users)) {
+          resultsContent = resultData.users.length > 0
+            ? resultData.users.map(user => <UserResult key={user.UserID} user={user} />)
+            : <p>No users found matching your criteria.</p>;
+
+      // Handles a single user lookup
+      } else if (resultData.userById) {
+          resultsContent = <UserResult user={resultData.userById} />;
+
+      // Handles a successful user creation or update
+      } else if (resultData.createUser || resultData.updateUser) {
+          const user = resultData.createUser || resultData.updateUser;
+          resultsContent = (
+            <div>
+              <p>✅ Success! User profile updated:</p>
+              <UserResult user={user} />
+            </div>
+          );
+      }
+  }
+  
+  // Fallback for successful operations that don't return a list or known object
+  if (!resultsContent && rawJson?.data) {
+      resultsContent = <p>✅ The operation was successful. View details for the raw response.</p>;
+  // Fallback for GraphQL errors
+  } else if (!resultsContent && rawJson?.errors) {
+      resultsContent = <p>❌ An error occurred. See details for more information.</p>;
+  }
+
+  return (
+    <div className="results-display">
+      <div className="results-summary">
+        {resultsContent}
+      </div>
+      
+      <div className="details-toggle">
+        <button onClick={() => setDetailsVisible(!detailsVisible)}>
+          {detailsVisible ? 'Hide GraphQL & JSON' : 'Show GraphQL & JSON'}
+        </button>
+      </div>
+
+      {detailsVisible && (
+        <div className="raw-details">
+          <strong>Generated GraphQL:</strong>
+          <pre>{rawGql}</pre>
+          
+          <strong>Result JSON:</strong>
+          <pre>{JSON.stringify(rawJson, null, 2)}</pre>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ResultsDisplay;
+</file>
+
+<file path="src/backend/app.py">
+# src/backend/app.py
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+import bcrypt
+import requests
+from flask_cors import CORS
+from flask import Flask, jsonify, request
+from ariadne import load_schema_from_path, make_executable_schema, graphql_sync
+from ariadne.explorer import ExplorerGraphiQL
+from dotenv import load_dotenv
+from werkzeug.exceptions import HTTPException
+from datetime import datetime
+
+# Import backend modules
+from src.backend.models.user_models import UserProfileType
+from src.backend.errors import handle_http_exception, handle_value_error, handle_generic_exception, json_error
+from src.backend.services.nl2gql_service import process_nl2gql_request
+from src.backend.repository import user_repo
+from src.backend.db import ensure_user_counter, ensure_job_counter, ensure_application_counter, next_user_id
+
+# Import resolvers
+from src.backend.resolvers.user_resolvers import query as user_query, mutation as user_mutation
+from src.backend.resolvers.job_resolvers import query as job_query, mutation as job_mutation
+from src.backend.resolvers.application_resolvers import query as app_query, mutation as app_mutation, application as application_object, job
+# Load environment variables
+load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
+
+# --- Flask app setup ---
+app = Flask(__name__)
+CORS(app)
+explorer_html = ExplorerGraphiQL().html(None)
+
+# --- Load GraphQL schema ---
+schema_path = os.path.join(os.path.dirname(__file__), "schema.graphql")
+type_defs = load_schema_from_path(schema_path)
+schema = make_executable_schema(
+    type_defs,
+    [user_query, job_query, app_query],
+    [user_mutation, job_mutation, app_mutation],
+    application_object,
+    job  
+)
+
+# Initialize database counters
+ensure_user_counter()
+ensure_job_counter()
+ensure_application_counter()
+
+# --- Error Handlers ---
+@app.errorhandler(HTTPException)
+def http_error(e): return handle_http_exception(e)
+@app.errorhandler(ValueError)
+def value_error(e): return handle_value_error(e)
+@app.errorhandler(Exception)
+def unhandled_exception(e): return handle_generic_exception(e)
+
+# --- GraphQL endpoints ---
+@app.route("/graphql", methods=["GET"])
+def graphql_explorer(): return explorer_html, 200
+@app.route("/graphql", methods=["POST"])
+def graphql_server():
+    data = request.get_json(silent=True)
+    user_role = request.headers.get("X-User-Role", "Applicant")
+    success, result = graphql_sync(
+        schema, 
+        data, 
+        context_value={"request": request, "user_role": user_role}, 
+        debug=app.debug
+    )
+    return jsonify(result), (200 if success else 400)
+
+# --- Health check ---
+@app.route("/")
+def health(): return jsonify({"status": "Backend is running!"}), 200
+
+# --- NL2GQL Endpoint ---
+@app.route("/nl2gql", methods=["POST"])
+def nl2gql():
+    data = request.get_json(silent=True) or {}
+    user_text = data.get("query", "")
+    user_context = data.get("userContext")
+    run_graphql = request.args.get("run", "true").lower() != "false"
+    with open(schema_path, "r", encoding="utf-8") as f: schema_sdl = f.read()
+
+    # --- THIS IS THE FUNCTION THAT NEEDED TO BE FIXED ---
+    def execute_graphql_query(gql_data):
+        # 1. Read the role from the header within this function's scope
+        user_role = request.headers.get("X-User-Role", "Applicant")
+        
+        # 2. Pass the role into the context for this specific execution
+        return graphql_sync(
+            schema, 
+            gql_data, 
+            context_value={"request": request, "user_role": user_role}, 
+            debug=app.debug
+        )
+
+    payload, status_code = process_nl2gql_request(
+        user_text, schema_sdl, run_graphql, execute_graphql_query, user_context
+    )
+    return jsonify(payload), status_code
+
+# --- User Registration Endpoint ---
+@app.route("/register", methods=["POST"])
+def register_user():
+    data = request.get_json()
+    if not data: return jsonify({"error": "Invalid JSON body"}), 400
+    
+    email, password, first_name, last_name, role = data.get("email"), data.get("password"), data.get("firstName"), data.get("lastName"), data.get("role")
+    if not all([email, password, first_name, last_name, role]):
+        return jsonify({"error": "Missing required fields"}), 400
+    try:
+        validated_role = UserProfileType.from_str(role).value
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    if user_repo.find_user_by_email(email):
+        return jsonify({"error": f"An account with the email '{email}' already exists."}), 409
+
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+    new_user_doc = {
+        "UserID": next_user_id(), "email": email.lower(), "password": hashed_password,
+        "firstName": first_name, "lastName": last_name, "role": validated_role,
+        "phone_number": None, "city": None, "state_province": None, "country": None,
+        "linkedin_profile": None, "portfolio_url": None, "highest_qualification": None,
+        "years_of_experience": None, "createdAt": datetime.utcnow().isoformat(),
+        "dob": None, "skills": [], "professionalTitle": None
+    }
+
+    try:
+        user_repo.insert_user(new_user_doc)
+        return jsonify({"message": "User registered successfully!"}), 201
+    except Exception as e:
+        return jsonify({"error": f"An internal error occurred: {e}"}), 500
+    
+# --- User Login Endpoint ---
+@app.route("/login", methods=["POST"])
+def login_user():
+    data = request.get_json()
+    if not data: return jsonify({"error": "Invalid JSON body"}), 400
+    email, password = data.get("email"), data.get("password")
+    if not email or not password: return jsonify({"error": "Email and password are required"}), 400
+
+    user = user_repo.find_user_by_email(email)
+    if not user: return jsonify({"error": "Invalid email or password"}), 401
+
+    if bcrypt.checkpw(password.encode('utf-8'), user.get("password")):
+        user_data = user_repo.to_user_output(user)
+        return jsonify({"message": "Login successful!", "user": user_data}), 200
+    else:
+        return jsonify({"error": "Invalid email or password"}), 401
+
+if __name__ == "__main__":
+    print("🚀 Starting Flask server on http://localhost:8000 ...")
+    app.run(host="0.0.0.0", port=8000, debug=True)
+</file>
+
+<file path="src/backend/services/nl2gql_service.py">
+# src/backend/services/nl2gql_service.py
+import os
+import requests
+import json
+from typing import Optional
+from dotenv import load_dotenv
+
+env_path = os.path.join(os.path.dirname(__file__), '../../.env')
+load_dotenv(dotenv_path=env_path)
+
+from ..errors import json_error, unwrap_graphql_errors
+
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "https://ollama.com")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:120b-cloud")
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
+OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
+
+
+# --- RESTORED: The more comprehensive small talk handler ---
+def handle_small_talk(user_text: str):
+    """
+    Checks for a wide range of conversational phrases (greetings, idioms, etc.)
+    and returns a predefined friendly response to bypass the LLM.
+    """
+    clean_text = user_text.lower().strip()
+    words = clean_text.split()
+    
+    # --- Category 1: Direct Matches (Greetings, Gratitude, Interjections) ---
+    small_talk_map = {
+        "hi": "Hello there! How can I assist with your job data today?",
+        "hello": "Hi! I'm ready to convert your requests into GraphQL. What can I do?",
+        "hey": "Hey! Let me know what data you need to query or update.",
+        "greetings": "Greetings! I'm here to help with your job portal data via NL2GQL.",
+        "thanks": "You're welcome! I'm happy to help.",
+        "thank you": "My pleasure! Just ask if you have more queries.",
+        "wow": "Glad to impress! Do you have a query for me?",
+        "cool": "I think so too! Ready for your next command.",
+        "awesome": "I strive for excellence! Ready for a command.",
+        "oops": "Mistakes happen! Please try your query again.",
+        "sorry": "No worries at all. What is your request?",
+        "how are you": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
+        "what's up": "Just monitoring the database for your requests. What can I do for you?",
+        "how are you doing today": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
+    }
+    
+    # --- Category 2: Idioms, Common Phrases & Discourse Markers (Keyword Matching) ---
+    keyword_responses = {
+        "by the way": "Interesting point. Do you have a job or user query for me?",
+        "i mean": "I understand. Please formulate your query clearly.",
+        "just saying": "Got it. I'm waiting for a command that maps to GraphQL.",
+        "you know": "I know what you mean. Focus on what data you need.",
+        "hold on": "Okay, I'll hold. Let me know when you have a request.",
+        "excuse me": "No problem. How can I help with the data?",
+        "can you help me": "Absolutely! I can help by converting your request into a GraphQL query.",
+        "can i ask": "You can ask. I can answer if it involves querying or mutating job portal data.",
+    }
+    
+    default_response_payload = {
+        "graphql": "Small talk handled by service logic", 
+        "result": {
+            "response": (
+                "Hello! I'm your GraphQL assistant. I can help with job portal data. "
+                "Try asking me to:\n- **Find** jobs: *find jobs for Java developer in London*\n"
+                "- **Update** your profile: *update my professional title to Senior Developer*"
+            )
+        }
+    }
+    
+    # 1. Check for Direct Matches
+    if clean_text in small_talk_map:
+        return {"graphql": "Small talk handled by service logic", "result": {"response": small_talk_map[clean_text]}}, 200
+        
+    # 2. Check for Keyword Matches
+    for key, response in keyword_responses.items():
+        if key in clean_text:
+            return {"graphql": "Small talk handled by service logic", "result": {"response": response}}, 200
+
+    # 3. Check for short multi-word greetings or questions to the bot
+    if words:
+        is_greeting = words[0] in ["hi", "hello", "hey"]
+        is_vocative = "assistant" in words or "bot" in words or "jobchat" in words
+        
+        if (is_greeting or is_vocative) and len(words) <= 5:
+            # Return the default, guiding response for these cases
+            return default_response_payload, 200
+        
+    return None
+
+# --- UPDATED Prompt Builder (Keeps the userContext logic) ---
+def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[dict]) -> str:
+    context_str = ""
+    if user_context and user_context.get("UserID"):
+        user_id = user_context["UserID"]
+        first_name = user_context.get("firstName", "the user")
+        context_str = (
+            f"\n\nContext:\n"
+            f"- The request is from a logged-in user named '{first_name}' with UserID: {user_id}.\n"
+            f"- When the user refers to 'me', 'my', or 'I', you MUST use their UserID ({user_id}) to target the operation (e.g., in an `updateUser` mutation).\n"
+        )
+
+    return (
+        "You are an expert GraphQL assistant. Your task is to convert the user's natural language request "
+        "into a single, valid GraphQL operation that adheres strictly to the provided schema. "
+        "Return ONLY the GraphQL operation with no explanations or markdown fences."
+        f"{context_str}"
+        "\n\nKey Instructions:\n"
+         "- When a user asks **'how many applications'** or for a **'count of applicants'**, you **MUST** query the relevant job and include the `applicationCount` field.\n"
+        "- When a user wants to **UPDATE the STATUS** of an application (e.g., 'interview', 'reject', 'hire'), you **MUST** use the `updateApplicationStatusByNames` mutation.\n"
+        "- When a user wants to see **applicants**, **candidates**, or people who **applied** for a job, you **MUST** query the `jobs` field with a filter and request the nested `applicants` field within it.\n"
+        "- When a user wants to **ADD** skills to a job, you **MUST** use the `addSkillsToJob` mutation. For all other job updates, use the `updateJob` mutation.\n"
+        "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation.\n"
+        "- When a user wants to **DELETE** or **REMOVE** a job using its title and company, you **MUST** use the `deleteJobByFields` mutation.\n"
+        "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation.\n"
+        "- For other actions, use the appropriate query or mutation.\n"
+        "- If the user's request cannot be mapped to any field in the schema, return the single word: INVALID.\n"
+        "- Do not make up fields or assume logic not present in the schema.\n\n"
+        "Schema:\n"
+        f"{schema_sdl}\n\n"
+        "User request:\n"
+        f"\"{user_text}\""
+    )
+
+def extract_graphql(text: str) -> str:
+    """Extracts a GraphQL query from a markdown block or plain text."""
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            if "query" in part or "mutation" in part or "{" in part:
+                return part.replace("graphql", "").strip()
+    return text.strip()
+
+# --- UPDATED Service Processor (Keeps the userContext logic) ---
+def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, graphql_executor_fn, user_context: Optional[dict]):
+    small_talk_response = handle_small_talk(user_text)
+    if small_talk_response:
+        return small_talk_response
+    
+    if not OLLAMA_API_KEY:
+        return json_error("NL2GQL Service Error: OLLAMA_API_KEY is missing in environment configuration.", 500)
+        
+    prompt = build_nl2gql_prompt(user_text, schema_sdl, user_context)
+
+    headers = {"Authorization": f"Bearer {OLLAMA_API_KEY}"}
+
+    try:
+        resp = requests.post(
+            OLLAMA_GENERATE_URL,
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            headers=headers,
+            timeout=90,
+        )
+    except requests.exceptions.RequestException as e:
+        return json_error(f"Ollama network error: {e}", 502)
+
+    if not resp.ok:
+        try:
+            err_details = resp.json().get("error", resp.text)
+            return json_error(f"LLM Error {resp.status_code}: {err_details}", 502)
+        except (json.JSONDecodeError, ValueError):
+            return json_error(f"Ollama returned a non-JSON error (Status: {resp.status_code}).", 502)
+
+    try:
+        gen_body = resp.json()
+        gen = gen_body.get("response", "")
+        gql = extract_graphql(gen)
+    except (ValueError, IndexError):
+        return json_error("Failed to parse the response from the LLM.", 502)
+
+    if not gql or gql.strip().upper() == "INVALID":
+        return json_error("Your request could not be mapped to a valid operation. Please try rephrasing.", 400)
+
+    if not run_graphql:
+        return {"graphql": gql}, 200
+
+    success, result = graphql_executor_fn({"query": gql})
+    
+    wrapped_error = unwrap_graphql_errors(result)
+    if wrapped_error:
+        return wrapped_error 
+
+    return {"graphql": gql, "result": result}, (200 if success else 400)
 </file>
 
 <file path="src/frontend-react/src/App.js">

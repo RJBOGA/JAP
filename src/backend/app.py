@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 from werkzeug.exceptions import HTTPException
 from datetime import datetime
 
-# Import backend modules
 from src.backend.models.user_models import UserProfileType
 from src.backend.errors import handle_http_exception, handle_value_error, handle_generic_exception, json_error
 from src.backend.services.nl2gql_service import process_nl2gql_request
@@ -75,25 +74,24 @@ def graphql_server():
 @app.route("/")
 def health(): return jsonify({"status": "Backend is running!"}), 200
 
-# --- NL2GQL Endpoint ---
+# --- UPDATED NL2GQL Endpoint ---
 @app.route("/nl2gql", methods=["POST"])
 def nl2gql():
     data = request.get_json(silent=True) or {}
     user_text = data.get("query", "")
-    user_context = data.get("userContext")
+    user_context = data.get("userContext") # This contains the full user object
     run_graphql = request.args.get("run", "true").lower() != "false"
     with open(schema_path, "r", encoding="utf-8") as f: schema_sdl = f.read()
 
-    # --- THIS IS THE FUNCTION THAT NEEDED TO BE FIXED ---
     def execute_graphql_query(gql_data):
-        # 1. Read the role from the header within this function's scope
         user_role = request.headers.get("X-User-Role", "Applicant")
         
-        # 2. Pass the role into the context for this specific execution
+        # --- THE FIX: Pass the FULL user_context into the GraphQL context ---
+        # This makes the logged-in user's ID, name, etc. available to all resolvers.
         return graphql_sync(
             schema, 
             gql_data, 
-            context_value={"request": request, "user_role": user_role}, 
+            context_value={"request": request, "user_role": user_role, "user": user_context}, 
             debug=app.debug
         )
 

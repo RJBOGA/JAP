@@ -144,4 +144,6 @@ type Mutation {
   Updates an application's status by finding it via user and job names.
   """
   updateApplicationStatusByNames(userName: String!, jobTitle: String!, companyName: String, newStatus: String!): Application
+  addNoteToApplicationByJob(jobTitle: String!, note: String!, companyName: String): Application
+  addSkillsToUser(UserID: Int!, skills: [String!]!): User
 }

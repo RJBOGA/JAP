@@ -153,3 +153,38 @@ def resolve_job_application_count(job_obj, info):
     # Use our new, efficient counting function
     count = application_repo.count_applications({"jobId": job_id})
     return count
+
+# --- ADD THIS NEW MUTATION RESOLVER AT THE END OF THE FILE ---
+@mutation.field("addNoteToApplicationByJob")
+def resolve_add_note_to_application_by_job(obj, info, jobTitle, note, companyName=None):
+    # 1. Get the logged-in user from the context
+    user = info.context.get("user")
+    if not user or not user.get("UserID"):
+        raise ValueError("Permission denied: You must be logged in to add a note.")
+    
+    user_id = user["UserID"]
+
+    # 2. Find the job
+    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
+    matching_jobs = job_repo.find_jobs(job_filter, None, None)
+    if not matching_jobs:
+        raise ValueError(f"Could not find a job with title '{jobTitle}'.")
+    if len(matching_jobs) > 1:
+        raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
+    job_doc = matching_jobs[0]
+
+    # 3. Find and update the specific application
+    application_filter = {"userId": user_id, "jobId": job_doc["jobId"]}
+    update_fields = {"notes": note} # Overwrite the notes field with the new note
+    
+    updated_application = application_repo.update_one_application(application_filter, update_fields)
+    
+    if not updated_application:
+        raise ValueError(f"You have not applied for the '{jobTitle}' job.")
+        
+    # 4. Construct the full response object
+    response_data = to_application_output(updated_application)
+    response_data["candidate"] = user_repo.to_user_output(user) # We already have the user object
+    response_data["job"] = job_repo.to_job_output(job_doc)
+    
+    return response_data

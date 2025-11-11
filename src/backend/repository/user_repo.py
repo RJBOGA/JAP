@@ -76,3 +76,15 @@ def delete_one(q: Dict[str, Any]) -> int:
     """Deletes one user matching the query."""
     res = users_collection().delete_one(q)
     return int(res.deleted_count)
+
+def add_skills_to_user(user_id: int, skills: List[str]) -> Optional[dict]:
+    """
+    Adds a list of skills to a user's skills array using $addToSet.
+    $addToSet ensures that only unique skills are added.
+    """
+    return users_collection().find_one_and_update(
+        {"UserID": int(user_id)},
+        {"$addToSet": {"skills": {"$each": skills}}},
+        projection={"_id": 0, "password": 0},
+        return_document=ReturnDocument.AFTER,
+    )
