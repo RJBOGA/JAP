@@ -27,7 +27,6 @@ const UserResult = ({ user }) => (
         </div>
         <div className="item-subtitle">{user.professionalTitle || 'No professional title provided'}</div>
         
-        {/* CORRECTED THIS LINE: Use '!= null' instead of 'is not null' */}
         {user.years_of_experience != null && (
             <div className="item-detail">
                 <strong>Experience:</strong> {user.years_of_experience} years
@@ -52,6 +51,18 @@ const UserResult = ({ user }) => (
     </div>
 );
 
+// A helper component to render the result of an application status update
+const ApplicationResult = ({ app }) => (
+    <div className="result-item">
+        <div className="item-header">
+            <span className="item-title">Application Status Updated</span>
+        </div>
+        <div className="status-update-info">
+            Candidate **{app.candidate?.firstName} {app.candidate?.lastName}** for the position of **{app.job?.title}** has been moved to the **{app.status}** stage.
+        </div>
+    </div>
+);
+
 
 const ResultsDisplay = ({ rawGql, rawJson }) => {
   const [detailsVisible, setDetailsVisible] = useState(false);
@@ -61,8 +72,33 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
 
   // Check for different types of data and prepare the display content
   if (resultData) {
-      // Handles a list of jobs
-      if (resultData.jobs && Array.isArray(resultData.jobs)) {
+      // Handles application status updates
+      if (resultData.updateApplicationStatusByNames) {
+          resultsContent = <ApplicationResult app={resultData.updateApplicationStatusByNames} />;
+      }
+      // NEW: Handles a request for jobs that includes an application count
+      else if (resultData.jobs && Array.isArray(resultData.jobs) && resultData.jobs[0]?.applicationCount !== undefined) {
+          resultsContent = resultData.jobs.map(job => (
+              <div key={job.jobId} className="result-item application-count-result">
+                  The job "**{job.title}**" at **{job.company}** has **{job.applicationCount}** application(s).
+              </div>
+          ));
+      }
+      // Handles a request for jobs with nested applicants
+      else if (resultData.jobs && Array.isArray(resultData.jobs) && resultData.jobs[0]?.applicants) {
+          resultsContent = resultData.jobs.map(job => (
+              <div key={job.jobId} className="result-item job-applicant-container">
+                  <h3 className="container-title">Applicants for: {job.title} at {job.company}</h3>
+                  {job.applicants.length > 0 ? (
+                      job.applicants.map(applicant => <UserResult key={applicant.UserID} user={applicant} />)
+                  ) : (
+                      <p>No applicants found for this job yet.</p>
+                  )}
+              </div>
+          ));
+      }
+      // Handles a simple list of jobs
+      else if (resultData.jobs && Array.isArray(resultData.jobs)) {
           resultsContent = resultData.jobs.length > 0
             ? resultData.jobs.map(job => <JobResult key={job.jobId} job={job} />)
             : <p>No jobs found matching your criteria.</p>;
@@ -87,7 +123,6 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
             </div>
           );
       }
-      // Add more parsers here for other operations like 'apply', 'createJob', etc.
   }
   
   // Fallback for successful operations that don't return a list or known object

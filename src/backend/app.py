@@ -23,8 +23,7 @@ from src.backend.db import ensure_user_counter, ensure_job_counter, ensure_appli
 # Import resolvers
 from src.backend.resolvers.user_resolvers import query as user_query, mutation as user_mutation
 from src.backend.resolvers.job_resolvers import query as job_query, mutation as job_mutation
-from src.backend.resolvers.application_resolvers import query as app_query, mutation as app_mutation, application as application_object
-
+from src.backend.resolvers.application_resolvers import query as app_query, mutation as app_mutation, application as application_object, job
 # Load environment variables
 load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
 
@@ -40,7 +39,8 @@ schema = make_executable_schema(
     type_defs,
     [user_query, job_query, app_query],
     [user_mutation, job_mutation, app_mutation],
-    application_object
+    application_object,
+    job  
 )
 
 # Initialize database counters

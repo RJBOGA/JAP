@@ -67,6 +67,7 @@ type Job {
   description: String
   postedAt: String
   applicants: [User!]
+  applicationCount: Int!
 }
 
 input JobInput {
@@ -138,4 +139,9 @@ type Mutation {
   createApplication(input: ApplicationInput!): Application!
   apply(userName: String!, jobTitle: String!, companyName: String): Application!
   updateApplication(appId: Int!, input: ApplicationUpdateInput!): Application
+  
+  """
+  Updates an application's status by finding it via user and job names.
+  """
+  updateApplicationStatusByNames(userName: String!, jobTitle: String!, companyName: String, newStatus: String!): Application
 }

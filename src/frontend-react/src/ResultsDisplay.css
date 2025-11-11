@@ -109,3 +109,27 @@
 [data-theme='dark'] .raw-details pre {
     background-color: rgba(255, 255, 255, 0.1);
 }
+
+.job-applicant-container {
+    background-color: var(--background-color);
+}
+
+.container-title {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.2em;
+    color: var(--text-color);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+}
+
+.status-update-info {
+    line-height: 1.6;
+    font-size: 1.05em;
+}
+
+.application-count-result {
+    font-size: 1.1em;
+    font-weight: 500;
+    text-align: center;
+}

@@ -22,3 +22,7 @@ def update_one_application(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Opt
         projection={"_id": 0},
         return_document=ReturnDocument.AFTER,
     )
+
+def count_applications(query: Dict[str, Any]) -> int:
+    """Counts the number of documents in the applications collection matching a query."""
+    return applications_collection().count_documents(query)
