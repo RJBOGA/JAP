@@ -1,56 +1,54 @@
+# src/backend/repository/user_repo.py
 import re
 from typing import Optional, Dict, Any, List
 from pymongo import ReturnDocument
-from ..db import users_collection, counters_collection
-from ..db import get_db  # if you need raw DB access
+from ..db import users_collection
 
-def ensure_user_counter():
-    counters = counters_collection()
-    counters.update_one(
-        {"_id": "UserID"},
-        {"$setOnInsert": {"sequence_value": 0}},
-        upsert=True,
-    )
+def find_user_by_email(email: str) -> Optional[dict]:
+    """Finds a single user by their email (case-insensitive)."""
+    return users_collection().find_one({"email": {"$regex": f"^{email}$", "$options": "i"}})
 
-def next_user_id() -> int:
-    counters = counters_collection()
-    result = counters.find_one_and_update(
-        {"_id": "UserID"},
-        {"$inc": {"sequence_value": 1}},
-        return_document=ReturnDocument.AFTER,
-        upsert=True,
-    )
-    return int(result["sequence_value"])
-
-def to_user_output(doc: dict) -> dict:
+def to_user_output(doc: dict) -> Optional[dict]:
+    """Formats a user document from MongoDB for API output, excluding sensitive fields."""
     if not doc:
         return None
+    
     return {
-        "UserID": int(doc.get("UserID")) if doc.get("UserID") is not None else None,
-        "FirstName": doc.get("FirstName"),
-        "LastName": doc.get("LastName"),
-        "DateOfBirth": doc.get("DateOfBirth"),
-        "ProfessionalTitle": doc.get("ProfessionalTitle"),
-        "Summary": doc.get("Summary"),
+        "UserID": doc.get("UserID"),
+        "email": doc.get("email"),
+        "firstName": doc.get("firstName"),
+        "lastName": doc.get("lastName"),
+        "role": doc.get("role"),
+        "phone_number": doc.get("phone_number"),
+        "city": doc.get("city"),
+        "state_province": doc.get("state_province"),
+        "country": doc.get("country"),
+        "linkedin_profile": doc.get("linkedin_profile"),
+        "portfolio_url": doc.get("portfolio_url"),
+        "highest_qualification": doc.get("highest_qualification"),
+        "years_of_experience": doc.get("years_of_experience"),
+        "createdAt": doc.get("createdAt"),
+        "dob": doc.get("dob"),
+        "skills": doc.get("skills"),
+        "professionalTitle": doc.get("professionalTitle")
     }
 
-def name_filter_ci(first_name: Optional[str], last_name: Optional[str]) -> Dict[str, Any]:
-    q: Dict[str, Any] = {}
+def build_filter(first_name: Optional[str], last_name: Optional[str], dob: Optional[str], skills: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Builds a filter query, now including support for skills."""
+    q = {}
     if first_name:
-        q["FirstName"] = {"$regex": f"^{re.escape(first_name)}$", "$options": "i"}
+        q["firstName"] = {"$regex": f"^{re.escape(first_name)}$", "$options": "i"}
     if last_name:
-        q["LastName"] = {"$regex": f"^{re.escape(last_name)}$", "$options": "i"}
-    return q
-
-def build_filter(first_name: Optional[str], last_name: Optional[str], dob: Optional[str]) -> Dict[str, Any]:
-    q = name_filter_ci(first_name, last_name)
+        q["lastName"] = {"$regex": f"^{re.escape(last_name)}$", "$options": "i"}
     if dob:
-        q["DateOfBirth"] = dob
+        q["dob"] = dob
+    if skills:
+        q["skills"] = {"$all": skills}
     return q
 
 def find_users(q: Dict[str, Any], skip: Optional[int], limit: Optional[int]) -> List[dict]:
-    col = users_collection()
-    cursor = col.find(q, {"_id": 0})
+    """Finds multiple users, excluding the password field."""
+    cursor = users_collection().find(q, {"_id": 0, "password": 0})
     if skip is not None:
         cursor = cursor.skip(int(skip))
     if limit is not None:
@@ -58,29 +56,23 @@ def find_users(q: Dict[str, Any], skip: Optional[int], limit: Optional[int]) -> 
     return list(cursor)
 
 def find_one_by_id(user_id: int) -> Optional[dict]:
-    col = users_collection()
-    return col.find_one({"UserID": int(user_id)}, {"_id": 0})
+    """Finds a single user by ID, excluding the password field."""
+    return users_collection().find_one({"UserID": int(user_id)}, {"_id": 0, "password": 0})
 
 def insert_user(doc: dict) -> None:
+    """Inserts a new user document."""
     users_collection().insert_one(doc)
 
 def update_one(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Optional[dict]:
-    col = users_collection()
-    return col.find_one_and_update(
+    """Finds and updates one user, returning the updated document."""
+    return users_collection().find_one_and_update(
         q,
         {"$set": set_fields},
-        projection={"_id": 0},
+        projection={"_id": 0, "password": 0},
         return_document=ReturnDocument.AFTER,
     )
 
-def update_many(q: Dict[str, Any], set_fields: Dict[str, Any]) -> int:
-    res = users_collection().update_many(q, {"$set": set_fields})
-    return int(res.modified_count)
-
 def delete_one(q: Dict[str, Any]) -> int:
+    """Deletes one user matching the query."""
     res = users_collection().delete_one(q)
-    return int(res.deleted_count)
-
-def delete_many(q: Dict[str, Any]) -> int:
-    res = users_collection().delete_many(q)
     return int(res.deleted_count)

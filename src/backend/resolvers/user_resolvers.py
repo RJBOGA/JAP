@@ -1,135 +1,91 @@
-from typing import Optional
+# src/backend/resolvers/user_resolvers.py
 from ariadne import QueryType, MutationType
-# Corrected import for validators
+from datetime import datetime
 from ..validators.common_validators import require_non_empty_str, validate_date_str, clean_update_input
-# Corrected import for the user repository
-from ..repository.user_repo import (
-    next_user_id,
-    to_user_output,
-    build_filter,
-    name_filter_ci,
-    find_users,
-    find_one_by_id,
-    insert_user,
-    update_one,
-    update_many,
-    delete_one,
-    delete_many,
-)
+from ..repository import user_repo
+from ..db import next_user_id
 
 query = QueryType()
 mutation = MutationType()
 
 @query.field("users")
-def resolve_users(*_, limit=None, skip=None, FirstName=None, LastName=None, DateOfBirth=None):
-    if DateOfBirth:
-        DateOfBirth = validate_date_str(DateOfBirth)
-    q = build_filter(FirstName, LastName, DateOfBirth)
-    docs = find_users(q, skip, limit)
-    return [to_user_output(d) for d in docs]
+def resolve_users(*_, limit=None, skip=None, firstName=None, lastName=None, dob=None, skills=None):
+    if dob:
+        dob = validate_date_str(dob)
+    # Pass all arguments to the filter builder
+    q = user_repo.build_filter(firstName, lastName, dob, skills)
+    docs = user_repo.find_users(q, skip, limit)
+    return [user_repo.to_user_output(d) for d in docs]
 
 @query.field("userById")
 def resolve_user_by_id(*_, UserID):
-    doc = find_one_by_id(int(UserID))
-    return to_user_output(doc)
+    doc = user_repo.find_one_by_id(int(UserID))
+    return user_repo.to_user_output(doc)
 
 @mutation.field("createUser")
 def resolve_create_user(*_, input):
-    first = require_non_empty_str(input.get("FirstName"), "FirstName")
-    last = require_non_empty_str(input.get("LastName"), "LastName")
-    dob = validate_date_str(input.get("DateOfBirth"))
-    title = (input.get("ProfessionalTitle") or None)
-    summary = (input.get("Summary") or None)
+    email = require_non_empty_str(input.get("email"), "email")
+    if user_repo.find_user_by_email(email):
+        raise ValueError(f"A user with the email '{email}' already exists.")
 
     doc = {
-        "UserID": next_user_id(),
-        "FirstName": first,
-        "LastName": last,
-        "DateOfBirth": dob,
-        "ProfessionalTitle": title,
-        "Summary": summary,
+        "UserID": next_user_id(), "email": email.lower(), "password": None,
+        "firstName": require_non_empty_str(input.get("firstName"), "firstName"),
+        "lastName": require_non_empty_str(input.get("lastName"), "lastName"),
+        "role": require_non_empty_str(input.get("role"), "role"),
+        "createdAt": datetime.utcnow().isoformat(), "phone_number": input.get("phone_number"),
+        "city": input.get("city"), "state_province": input.get("state_province"),
+        "country": input.get("country"), "linkedin_profile": input.get("linkedin_profile"),
+        "portfolio_url": input.get("portfolio_url"), "highest_qualification": input.get("highest_qualification"),
+        "years_of_experience": input.get("years_of_experience"), "dob": validate_date_str(input.get("dob")),
+        "skills": input.get("skills", []), "professionalTitle": input.get("professionalTitle")
     }
-    insert_user(doc)
-    return to_user_output(doc)
+    user_repo.insert_user(doc)
+    return user_repo.to_user_output(doc)
 
 @mutation.field("updateUser")
 def resolve_update_user(*_, UserID, input):
-    if "FirstName" in input and input["FirstName"] is not None:
-        require_non_empty_str(input["FirstName"], "FirstName")
-    if "LastName" in input and input["LastName"] is not None:
-        require_non_empty_str(input["LastName"], "LastName")
-    if "DateOfBirth" in input and input["DateOfBirth"] is not None:
-        input["DateOfBirth"] = validate_date_str(input["DateOfBirth"])
-
+    if "dob" in input and input.get("dob") is not None: input["dob"] = validate_date_str(input["dob"])
+    if "firstName" in input and input.get("firstName") is not None: require_non_empty_str(input["firstName"], "firstName")
+    if "lastName" in input and input.get("lastName") is not None: require_non_empty_str(input["lastName"], "lastName")
+    
     set_fields = clean_update_input(input)
-    if not set_fields:
-        raise ValueError("No fields provided to update")
-
-    updated = update_one({"UserID": int(UserID)}, set_fields)
-    return to_user_output(updated)
+    if not set_fields: raise ValueError("No fields provided to update")
+    
+    updated = user_repo.update_one({"UserID": int(UserID)}, set_fields)
+    if not updated: raise ValueError(f"User with ID {UserID} not found for update.")
+    return user_repo.to_user_output(updated)
 
 @mutation.field("updateUserByName")
-def resolve_update_user_by_name(*_, FirstName=None, LastName=None, input=None):
-    if input and input.get("DateOfBirth") is not None:
-        input["DateOfBirth"] = validate_date_str(input["DateOfBirth"])
-    if input and input.get("FirstName") is not None:
-        require_non_empty_str(input["FirstName"], "FirstName")
-    if input and input.get("LastName") is not None:
-        require_non_empty_str(input["LastName"], "LastName")
-
-    q = name_filter_ci(FirstName, LastName)
-    if not q:
-        raise ValueError("Provide FirstName and/or LastName to identify the user")
-
+def resolve_update_user_by_name(*_, firstName=None, lastName=None, input=None):
+    if input and input.get("dob") is not None: input["dob"] = validate_date_str(input["dob"])
+    
+    q = user_repo.build_filter(firstName, lastName, None)
+    if not q: raise ValueError("Provide firstName and/or lastName to identify the user")
+    
     set_fields = clean_update_input(input or {})
-    if not set_fields:
-        raise ValueError("No fields provided to update")
+    if not set_fields: raise ValueError("No fields provided to update")
 
-    matches = find_users(q, None, None)
-    if len(matches) == 0:
-        raise ValueError("No user matched the provided name filter")
-    if len(matches) > 1:
-        raise ValueError("Multiple users matched; include both FirstName and LastName to disambiguate")
+    matches = user_repo.find_users(q, None, None)
+    if len(matches) == 0: raise ValueError("No user matched the provided name filter")
+    if len(matches) > 1: raise ValueError("Multiple users matched; please be more specific to target a single user")
 
-    updated = update_one(q, set_fields)
-    return to_user_output(updated)
-
-@mutation.field("updateUsersByName")
-def resolve_update_users_by_name(*_, FirstName=None, LastName=None, input=None):
-    if input and input.get("DateOfBirth") is not None:
-        input["DateOfBirth"] = validate_date_str(input["DateOfBirth"])
-    q = name_filter_ci(FirstName, LastName)
-    if not q:
-        raise ValueError("Provide FirstName and/or LastName to filter users")
-    set_fields = clean_update_input(input or {})
-    if not set_fields:
-        raise ValueError("No fields provided to update")
-    count = update_many(q, set_fields)
-    return int(count)
+    target_user_id = matches[0]["UserID"]
+    updated = user_repo.update_one({"UserID": target_user_id}, set_fields)
+    return user_repo.to_user_output(updated)
 
 @mutation.field("deleteUser")
 def resolve_delete_user(*_, UserID):
-    return delete_one({"UserID": int(UserID)}) == 1
+    return user_repo.delete_one({"UserID": int(UserID)}) == 1
 
 @mutation.field("deleteUserByFields")
-def resolve_delete_user_by_fields(*_, FirstName=None, LastName=None, DateOfBirth=None):
-    if DateOfBirth:
-        DateOfBirth = validate_date_str(DateOfBirth)
-    q = build_filter(FirstName, LastName, DateOfBirth)
-    if not q:
-        raise ValueError("Provide at least one filter: FirstName, LastName, or DateOfBirth")
-    matches = find_users(q, None, None)
-    if len(matches) == 0:
-        return False
-    if len(matches) > 1:
-        raise ValueError("Multiple users matched; add more filters to target a single user")
-    return delete_one(q) == 1
-
-@mutation.field("deleteUsersByFields")
-def resolve_delete_users_by_fields(*_, FirstName=None, LastName=None, DateOfBirth=None):
-    if DateOfBirth:
-        DateOfBirth = validate_date_str(DateOfBirth)
-    q = build_filter(FirstName, LastName, DateOfBirth)
-    if not q:
-        raise ValueError("Provide at least one filter: FirstName, LastName, or DateOfBirth")
-    return int(delete_many(q))
+def resolve_delete_user_by_fields(*_, firstName=None, lastName=None, dob=None):
+    if dob: dob = validate_date_str(dob)
+    q = user_repo.build_filter(firstName, lastName, dob)
+    if not q: raise ValueError("Provide at least one filter: firstName, lastName, or dob")
+    
+    matches = user_repo.find_users(q, None, None)
+    if len(matches) == 0: return False
+    if len(matches) > 1: raise ValueError("Multiple users matched; add more filters to target a single user")
+    
+    return user_repo.delete_one(q) == 1

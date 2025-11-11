@@ -1,12 +1,10 @@
 // src/frontend-react/src/App.js
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import './App.css';
 import LoginPage from './LoginPage';
 import ResultsDisplay from './ResultsDisplay';
-
-const NL2GQL_ENDPOINT = process.env.REACT_APP_NL2GQL_ENDPOINT || 'http://localhost:8000/nl2gql';
+import apiClient from './api'; // Import our new centralized API client
 
 function ChatPage() {
   const navigate = useNavigate();
@@ -22,21 +20,17 @@ function ChatPage() {
 
       // Check if the session has expired
       if (now > session.expiresAt) {
-        // If expired, clear the session from storage and redirect to login
         localStorage.removeItem('session');
         navigate('/login');
       } else {
-        // If the session is valid, set the user state
         setUser(session.user);
       }
     } else {
-      // If no session exists at all, redirect to the login page
       navigate('/login');
     }
   }, [navigate]);
 
   const handleLogout = () => {
-    // Clear the session from localStorage
     localStorage.removeItem('session');
     setUser(null);
     navigate('/login');
@@ -72,7 +66,13 @@ function ChatPage() {
     setLoading(true);
 
     try {
-      const response = await axios.post(NL2GQL_ENDPOINT, { query: userPrompt });
+      const payload = { 
+        query: userPrompt,
+        userContext: user // The apiClient will automatically add the role header
+      };
+      
+      // Use the new apiClient, which automatically adds headers
+      const response = await apiClient.post('/nl2gql', payload);
       const { graphql = "", result = {} } = response.data;
 
       if (graphql === "Small talk handled by service logic" && result.response) {
@@ -99,7 +99,7 @@ function ChatPage() {
       <div className="header-container">
         <h1>JobChat.AI</h1>
         <div className="header-controls">
-          <span className="user-greeting">Hi, {user.firstName}!</span>
+          <span className="user-greeting">Hi, {user.firstName}! ({user.role})</span>
           <button onClick={toggleTheme} className="theme-toggle">
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
@@ -108,6 +108,13 @@ function ChatPage() {
           </button>
         </div>
       </div>
+
+      {/* Conditionally render a special panel for users with the 'Recruiter' role */}
+      {user.role === 'Recruiter' && (
+        <div className="recruiter-panel">
+          <p>Recruiter Tools: You can now post jobs. Try asking: "create a job for a Senior Python Developer at Google..."</p>
+        </div>
+      )}
 
       <div className="message-container">
         {messages.map((m, index) => (
@@ -139,6 +146,7 @@ function ChatPage() {
     </div>
   );
 }
+
 
 // --- Main App Component for Routing ---
 function App() {
