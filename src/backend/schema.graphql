@@ -1,122 +1,34 @@
 # src/backend/schema.graphql
 
-# --- User Types ---
 type User {
-  UserID: Int!
-  email: String!
-  firstName: String!
-  lastName: String!
-  role: String!
-  phone_number: String
-  city: String
-  state_province: String
-  country: String
-  linkedin_profile: String
-  portfolio_url: String
-  highest_qualification: String
-  years_of_experience: Int
-  createdAt: String
-  dob: String
-  skills: [String]
-  professionalTitle: String
-  is_us_citizen: Boolean,
-  highest_degree_year: Int
+  UserID: Int!, email: String!, firstName: String!, lastName: String!, role: String!, phone_number: String,
+  city: String, state_province: String, country: String, linkedin_profile: String, portfolio_url: String,
+  highest_qualification: String, years_of_experience: Int, createdAt: String, dob: String,
+  skills: [String], professionalTitle: String, is_us_citizen: Boolean, highest_degree_year: Int
 }
-
 input UserInput {
-  firstName: String!
-  lastName: String!
-  email: String!
-  role: String!
-  phone_number: String
-  city: String
-  state_province: String
-  country: String
-  linkedin_profile: String
-  portfolio_url: String
-  highest_qualification: String
-  years_of_experience: Int
-  dob: String
-  skills: [String]
-  professionalTitle: String
+  firstName: String!, lastName: String!, email: String!, role: String!, phone_number: String, city: String,
+  state_province: String, country: String, linkedin_profile: String, portfolio_url: String,
+  highest_qualification: String, years_of_experience: Int, dob: String, skills: [String], professionalTitle: String
 }
-
 input UserUpdateInput {
-  firstName: String
-  lastName: String
-  phone_number: String
-  city: String
-  state_province: String
-  country: String
-  linkedin_profile: String
-  portfolio_url: String
-  highest_qualification: String
-  years_of_experience: Int
-  dob: String
-  skills: [String]
-  professionalTitle: String
-  is_us_citizen: Boolean,
-  highest_degree_year: Int
+  firstName: String, lastName: String, phone_number: String, city: String, state_province: String, country: String,
+  linkedin_profile: String, portfolio_url: String, highest_qualification: String, years_of_experience: Int,
+  dob: String, skills: [String], professionalTitle: String, is_us_citizen: Boolean, highest_degree_year: Int
 }
-
-
-# --- Job & Application Types ---
 type Job { 
-  jobId: Int!
-  title: String!
-  company: String
-  location: String
-  salaryRange: String
-  skillsRequired: [String]
-  description: String
-  postedAt: String
-  applicants: [User!]
-  applicationCount: Int!
+  jobId: Int!, title: String!, company: String, location: String, salaryRange: String, skillsRequired: [String], 
+  description: String, postedAt: String, applicants: [User!], applicationCount: Int!
 }
-
-input JobInput {
-  title: String!
-  company: String
-  location: String
-  salaryRange: String
-  skillsRequired: [String]
-  description: String
-}
-
-input JobUpdateInput {
-  title: String
-  company: String
-  location: String
-  salaryRange: String
-  skillsRequired: [String]
-  description: String
-}
-
+input JobInput { title: String!, company: String, location: String, salaryRange: String, skillsRequired: [String], description: String }
+input JobUpdateInput { title: String, company: String, location: String, salaryRange: String, skillsRequired: [String], description: String }
 type Application {
-  appId: Int!
-  userId: Int!
-  jobId: Int!
-  status: String!
-  submittedAt: String!
-  notes: String
-  candidate: User
-  job: Job
-  resume_url: String
+  appId: Int!, userId: Int!, jobId: Int!, status: String!, submittedAt: String!, 
+  notes: String, candidate: User, job: Job, resume_url: String
 }
+input ApplicationInput { userId: Int!, jobId: Int!, notes: String }
+input ApplicationUpdateInput { status: String, notes: String }
 
-input ApplicationInput {
-  userId: Int!
-  jobId: Int!
-  notes: String
-}
-
-input ApplicationUpdateInput {
-  status: String
-  notes: String
-}
-
-
-# --- CORRECTED Query Type ---
 type Query {
   users(limit: Int, skip: Int, firstName: String, lastName: String, dob: String, skills: [String!]): [User!]!
   userById(UserID: Int!): User
@@ -126,8 +38,6 @@ type Query {
   applicationById(appId: Int!): Application
 }
 
-
-# --- CORRECTED Mutation Type ---
 type Mutation {
   createUser(input: UserInput!): User!
   updateUser(UserID: Int!, input: UserUpdateInput!): User!
@@ -144,11 +54,7 @@ type Mutation {
   createApplication(input: ApplicationInput!): Application!
   apply(userName: String!, jobTitle: String!, companyName: String): Application!
   updateApplication(appId: Int!, input: ApplicationUpdateInput!): Application
-  
-  """
-  Updates an application's status by finding it via user and job names.
-  """
+  addSkillsToUser(UserID: Int!, skills: [String!]!): User
   updateApplicationStatusByNames(userName: String!, jobTitle: String!, companyName: String, newStatus: String!): Application
   addNoteToApplicationByJob(jobTitle: String!, note: String!, companyName: String): Application
-  addSkillsToUser(UserID: Int!, skills: [String!]!): User
 }

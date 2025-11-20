@@ -23,13 +23,18 @@ def _extract_text_from_docx(file_path: str) -> str:
 
 def _get_llm_parsed_data(resume_text: str) -> Optional[dict]:
     """Sends resume text to the LLM for structured data extraction."""
+    # --- UPDATED, MORE DETAILED PROMPT ---
     prompt = (
         "You are an expert HR assistant. Analyze the following resume text and extract the "
         "specified fields into a valid JSON object. The fields are: "
         "'skills' (a list of key technical skills), "
         "'years_of_experience' (an integer, calculated if necessary), "
-        "'is_us_citizen' (a boolean, infer this from phrases like 'US Citizen' or work authorization, default to false if unclear), and "
-        "'highest_degree_year' (an integer representing the graduation year of the highest degree mentioned). "
+        "'is_us_citizen' (a boolean, infer this from phrases like 'US Citizen' or work authorization, default to false if unclear), "
+        "'highest_degree_year' (an integer representing the graduation year of the highest degree mentioned), "
+        "'professionalTitle' (the user's most recent job title, e.g., 'Software Engineer'), "
+        "'city' (the user's city of residence), "
+        "'country' (the user's country of residence), and "
+        "'highest_qualification' (the name of the user's highest degree, e.g., 'Master of Science in Computer Science'). "
         "Respond ONLY with the JSON object and nothing else.\n\n"
         f"Resume Text:\n---\n{resume_text}"
     )
@@ -46,7 +51,6 @@ def _get_llm_parsed_data(resume_text: str) -> Optional[dict]:
         )
         response.raise_for_status()
         
-        # The 'format: "json"' parameter ensures the response is a JSON string.
         json_string = response.json().get("response", "{}")
         return json.loads(json_string)
     except (requests.RequestException, json.JSONDecodeError) as e:
@@ -56,7 +60,6 @@ def _get_llm_parsed_data(resume_text: str) -> Optional[dict]:
 def parse_resume_and_update_user(file_path: str, user_id: int):
     """
     Orchestrates the resume parsing process and updates the user profile.
-    This should be run as a background task in a real application.
     """
     print(f"Starting resume parsing for user {user_id} from file {file_path}...")
     try:
@@ -79,22 +82,20 @@ def parse_resume_and_update_user(file_path: str, user_id: int):
             print("LLM parsing failed or returned no data.")
             return
             
-        # Prepare the update document, ensuring we only use valid fields
+        # --- UPDATED: Allow more fields to be updated ---
         update_doc = {k: v for k, v in parsed_data.items() if k in [
-            'skills', 'years_of_experience', 'is_us_citizen', 'highest_degree_year'
+            'skills', 'years_of_experience', 'is_us_citizen', 'highest_degree_year',
+            'professionalTitle', 'city', 'country', 'highest_qualification'
         ]}
 
         if update_doc:
-            # For skills, we should append rather than overwrite
             if 'skills' in update_doc and isinstance(update_doc['skills'], list):
-                # Using a dedicated repo function is better
                 user_repo.add_skills_to_user(user_id, update_doc.pop('skills'))
 
-            # For other fields, we perform a standard update
             if update_doc:
                 user_repo.update_one({"UserID": user_id}, update_doc)
             
-            print(f"Successfully updated user {user_id} profile from resume.")
+            print(f"Successfully updated user {user_id} profile from resume with data: {update_doc}")
 
     except Exception as e:
         print(f"An unexpected error occurred during resume processing: {e}")

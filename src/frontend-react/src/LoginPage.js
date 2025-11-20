@@ -24,19 +24,13 @@ function LoginPage() {
         const payload = { email, password };
         const response = await axios.post(`${API_ENDPOINT}/login`, payload);
         
-        // 1. Calculate the expiration time (48 hours from now)
         const expirationTime = new Date().getTime() + (48 * 60 * 60 * 1000); // 48 hours in milliseconds
-
-        // 2. Create an object to store both the user data and the expiry timestamp
         const sessionData = {
           user: response.data.user,
           expiresAt: expirationTime,
         };
 
-        // 3. Store this object in localStorage for persistence
         localStorage.setItem('session', JSON.stringify(sessionData));
-        
-        // 4. Redirect to the chat page
         navigate('/chat');
 
       } catch (error) {
@@ -48,19 +42,16 @@ function LoginPage() {
         console.error('Login error:', error);
       }
     } else {
-      // --- Registration Logic ---
+      // --- UPDATED Registration Logic ---
       try {
         const payload = { email, firstName, lastName, password, role };
         const response = await axios.post(`${API_ENDPOINT}/register`, payload);
 
-        alert(response.data.message);
-        setIsLogin(true); // Switch form to login mode on successful registration
-        // Clear all fields
-        setEmail('');
-        setFirstName('');
-        setLastName('');
-        setPassword('');
-        setRole('Applicant');
+        // On success, get the new UserID from the response
+        const newUserId = response.data.UserID;
+        
+        // Redirect to the new profile completion page, passing the ID in the URL
+        navigate(`/complete-profile/${newUserId}`);
 
       } catch (error) {
         if (error.response && error.response.data.error) {

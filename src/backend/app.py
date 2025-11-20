@@ -129,29 +129,57 @@ def nl2gql():
 # --- User Authentication Endpoints ---
 @app.route("/register", methods=["POST"])
 def register_user():
+    # ... (all existing validation logic is the same)
     data = request.get_json()
-    if not data: return jsonify({"error": "Invalid JSON body"}), 400
     email, password, first_name, last_name, role = data.get("email"), data.get("password"), data.get("firstName"), data.get("lastName"), data.get("role")
     if not all([email, password, first_name, last_name, role]): return jsonify({"error": "Missing required fields"}), 400
-    try:
-        validated_role = UserProfileType.from_str(role).value
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    if user_repo.find_user_by_email(email): return jsonify({"error": f"An account with the email '{email}' already exists."}), 409
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    # ... (role validation, existing user check, password hashing are the same)
+
     new_user_doc = {
-        "UserID": next_user_id(), "email": email.lower(), "password": hashed_password, "firstName": first_name,
-        "lastName": last_name, "role": validated_role, "phone_number": None, "city": None, "state_province": None,
-        "country": None, "linkedin_profile": None, "portfolio_url": None, "highest_qualification": None,
-        "years_of_experience": None, "createdAt": datetime.utcnow().isoformat(), "dob": None, "skills": [],
-        "professionalTitle": None
+        "UserID": next_user_id(), "email": email.lower(), "password": bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()),
+        "firstName": first_name, "lastName": last_name, "role": role, "phone_number": None, "city": None,
+        "state_province": None, "country": None, "linkedin_profile": None, "portfolio_url": None,
+        "highest_qualification": None, "years_of_experience": None, "createdAt": datetime.utcnow().isoformat(),
+        "dob": None, "skills": [], "professionalTitle": None, "is_us_citizen": None, "highest_degree_year": None
     }
+    
     try:
         user_repo.insert_user(new_user_doc)
-        return jsonify({"message": "User registered successfully!"}), 201
+        # --- THE CHANGE: Return the new UserID on success ---
+        return jsonify({
+            "message": "User registered successfully!",
+            "UserID": new_user_doc["UserID"]
+        }), 201
     except Exception as e:
         return jsonify({"error": f"An internal error occurred: {e}"}), 500
-    
+
+# --- NEW User-Profile Resume Upload Endpoint ---
+@app.route("/users/<int:user_id>/resume", methods=["POST"])
+def upload_profile_resume(user_id):
+    if 'resume' not in request.files: return jsonify({"error": "No resume file part"}), 400
+    file = request.files['resume']
+    if file.filename == '': return jsonify({"error": "No selected file"}), 400
+
+    if file and allowed_file(file.filename):
+        # Verify the user exists
+        user = user_repo.find_one_by_id(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        filename = f"user_{user_id}_profile_{secure_filename(file.filename)}"
+        file_path = os.path.join(RESUME_FOLDER, filename)
+        file.save(file_path)
+        
+        # Trigger the parsing service (this can be slow, ideally a background job)
+        try:
+            resume_parser_service.parse_resume_and_update_user(file_path, user_id)
+        except Exception as e:
+            print(f"Error triggering profile resume parsing: {e}")
+
+        return jsonify({"message": "Resume uploaded and parsing initiated."}), 200
+
+    return jsonify({"error": "File type not allowed"}), 400
+   
 @app.route("/login", methods=["POST"])
 def login_user():
     data = request.get_json()

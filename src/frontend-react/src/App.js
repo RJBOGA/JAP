@@ -6,6 +6,7 @@ import LoginPage from './LoginPage';
 import ResultsDisplay from './ResultsDisplay';
 import apiClient from './api';
 import ResumeUploader from './ResumeUploader'; // Import the new uploader component
+import CompleteProfilePage from './CompleteProfilePage';
 
 function ChatPage() {
   const navigate = useNavigate();
@@ -171,6 +172,7 @@ function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/chat" element={<ChatPage />} />
+      <Route path="/complete-profile/:userId" element={<CompleteProfilePage />} />
       <Route path="/" element={<Navigate to="/chat" />} />
     </Routes>
   );

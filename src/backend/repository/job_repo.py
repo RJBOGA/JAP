@@ -1,6 +1,6 @@
 # src/backend/repository/job_repo.py
 import re
-from typing import Optional, Dict, Any, List # Added 'List' here
+from typing import Optional, Dict, Any, List
 from pymongo import ReturnDocument
 from ..db import jobs_collection
 
