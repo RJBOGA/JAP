@@ -4,11 +4,13 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import './App.css';
 import LoginPage from './LoginPage';
 import ResultsDisplay from './ResultsDisplay';
-import apiClient from './api'; // Import our new centralized API client
+import apiClient from './api';
+import ResumeUploader from './ResumeUploader'; // Import the new uploader component
 
 function ChatPage() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [uploadTarget, setUploadTarget] = useState(null); // State to trigger the uploader UI
 
   // --- This effect checks for a valid, non-expired session on component load ---
   useEffect(() => {
@@ -18,7 +20,6 @@ function ChatPage() {
       const session = JSON.parse(sessionJSON);
       const now = new Date().getTime();
 
-      // Check if the session has expired
       if (now > session.expiresAt) {
         localStorage.removeItem('session');
         navigate('/login');
@@ -68,14 +69,23 @@ function ChatPage() {
     try {
       const payload = { 
         query: userPrompt,
-        userContext: user // The apiClient will automatically add the role header
+        userContext: user
       };
       
-      // Use the new apiClient, which automatically adds headers
       const response = await apiClient.post('/nl2gql', payload);
       const { graphql = "", result = {} } = response.data;
 
-      if (graphql === "Small talk handled by service logic" && result.response) {
+      // Check for a successful 'apply' mutation to trigger the resume uploader
+      if (result.data?.apply) {
+        const application = result.data.apply;
+        setUploadTarget({
+          appId: application.appId,
+          jobTitle: application.job.title,
+        });
+        // Add the success message to the chat first
+        setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
+      }
+      else if (graphql === "Small talk handled by service logic" && result.response) {
         setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: result.response } }]);
       } else {
         setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
@@ -109,7 +119,6 @@ function ChatPage() {
         </div>
       </div>
 
-      {/* Conditionally render a special panel for users with the 'Recruiter' role */}
       {user.role === 'Recruiter' && (
         <div className="recruiter-panel">
           <p>Recruiter Tools: You can now post jobs. Try asking: "create a job for a Senior Python Developer at Google..."</p>
@@ -131,15 +140,23 @@ function ChatPage() {
         ))}
       </div>
       
+      {/* Conditionally render the ResumeUploader when a target is set */}
+      {uploadTarget && (
+        <ResumeUploader 
+          target={uploadTarget} 
+          onComplete={() => setUploadTarget(null)} 
+        />
+      )}
+      
       <form onSubmit={handleSend} className="input-form">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Type a request like 'find jobs in London'..."
-          disabled={loading}
+          disabled={loading || !!uploadTarget} // Disable input while uploader is active
         />
-        <button type="submit" disabled={loading}>
+        <button type="submit" disabled={loading || !!uploadTarget}>
           {loading ? '...' : 'Send'}
         </button>
       </form>
@@ -154,8 +171,6 @@ function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/chat" element={<ChatPage />} />
-      
-      {/* Set the default route to redirect to the chat page */}
       <Route path="/" element={<Navigate to="/chat" />} />
     </Routes>
   );

@@ -93,16 +93,19 @@ def resolve_delete_user_by_fields(*_, firstName=None, lastName=None, dob=None):
 # --- ADD THIS NEW MUTATION RESOLVER AT THE END OF THE FILE ---
 @mutation.field("addSkillsToUser")
 def resolve_add_skills_to_user(obj, info, UserID, skills):
-    # --- AUTHORIZATION CHECK ---
-    # A user can only add skills to their own profile.
+    # This is an example of a more detailed authorization check.
+    # We get the full user object from the context, which we set in app.py.
     logged_in_user = info.context.get("user")
+    
+    # A user can only add skills to their own profile.
     if not logged_in_user or logged_in_user.get("UserID") != UserID:
-        raise ValueError("Permission denied: You can only add skills to your own profile.")
+        # Also check if the user is a recruiter, who should be allowed to edit anyone.
+        if info.context.get("user_role") != "Recruiter":
+            raise ValueError("Permission denied: You can only add skills to your own profile.")
 
     if not skills:
         raise ValueError("The 'skills' list cannot be empty.")
 
-    # Call our new repository function
     updated_user = user_repo.add_skills_to_user(UserID, skills)
     
     if not updated_user:

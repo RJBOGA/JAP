@@ -98,7 +98,7 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
       else if (resultData.jobs && Array.isArray(resultData.jobs) && resultData.jobs[0]?.applicationCount !== undefined) {
           resultsContent = resultData.jobs.map(job => (
               <div key={job.jobId} className="result-item application-count-result">
-                  The job "**{job.title}**" at **{job.company}** has **{job.applicationCount}** application(s).
+                  The job "{job.title}" at {job.company} has {job.applicationCount} application's.
               </div>
           ));
       }

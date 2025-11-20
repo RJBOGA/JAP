@@ -216,3 +216,56 @@ body {
 [data-theme='dark'] .logout-button:hover {
   background-color: #4e4f50;
 }
+
+.recruiter-panel {
+  padding: 10px 15px;
+  background-color: var(--assistant-bubble-bg);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  text-align: center;
+  font-style: italic;
+}
+
+.resume-uploader-panel {
+  padding: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  text-align: center;
+  background-color: var(--card-background);
+}
+
+.resume-uploader-panel h4 {
+  margin-top: 0;
+}
+
+.uploader-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.uploader-controls button {
+  padding: 8px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.uploader-controls .skip-button {
+  background-color: transparent;
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+.status-success {
+  color: #2e7d32;
+  font-weight: bold;
+}
+
+.status-error {
+  color: #c62828;
+  font-weight: bold;
+}

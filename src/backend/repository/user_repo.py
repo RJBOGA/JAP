@@ -77,6 +77,7 @@ def delete_one(q: Dict[str, Any]) -> int:
     res = users_collection().delete_one(q)
     return int(res.deleted_count)
 
+# --- ADD THIS NEW FUNCTION AT THE END OF THE FILE ---
 def add_skills_to_user(user_id: int, skills: List[str]) -> Optional[dict]:
     """
     Adds a list of skills to a user's skills array using $addToSet.

@@ -19,6 +19,8 @@ type User {
   dob: String
   skills: [String]
   professionalTitle: String
+  is_us_citizen: Boolean,
+  highest_degree_year: Int
 }
 
 input UserInput {
@@ -53,6 +55,8 @@ input UserUpdateInput {
   dob: String
   skills: [String]
   professionalTitle: String
+  is_us_citizen: Boolean,
+  highest_degree_year: Int
 }
 
 
@@ -97,6 +101,7 @@ type Application {
   notes: String
   candidate: User
   job: Job
+  resume_url: String
 }
 
 input ApplicationInput {
