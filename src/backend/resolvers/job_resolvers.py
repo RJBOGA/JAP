@@ -107,6 +107,39 @@ def resolve_add_skills_to_job(obj, info, jobId, skills):
         
     return to_job_output(updated_job)
 
+@mutation.field("updateJobByFields")
+def resolve_update_job_by_fields(obj, info, title, input, company=None):
+    # --- AUTHORIZATION CHECK ---
+    user_role = info.context.get("user_role")
+    if user_role != "Recruiter":
+        raise ValueError("Permission denied: You must be a Recruiter to update a job.")
+
+    # Validate the title field in input if provided
+    if "title" in input and input["title"] is not None:
+        require_non_empty_str(input["title"], "title")
+
+    set_fields = clean_update_input(input)
+    if not set_fields:
+        raise ValueError("No fields provided to update.")
+
+    # Build a filter to find the job
+    q = build_job_filter(company, None, title)
+    
+    # --- SAFETY CHECK ---
+    # Before updating, find how many jobs match the criteria.
+    matching_jobs = find_jobs(q, None, None)
+    
+    if len(matching_jobs) == 0:
+        raise ValueError(f"No job found with title '{title}' at company '{company or 'any company'}'.")
+    if len(matching_jobs) > 1:
+        raise ValueError("Multiple jobs matched this criteria. Please be more specific or use a Job ID.")
+        
+    # If exactly one job matches, proceed with update
+    updated = update_one_job(q, set_fields)
+    if not updated:
+        raise ValueError(f"Failed to update job with title '{title}'.")
+    return to_job_output(updated)
+
 @mutation.field("deleteJobByFields")
 def resolve_delete_job_by_fields(obj, info, title, company=None):
     # --- AUTHORIZATION CHECK ---

@@ -65,6 +65,8 @@ type Job {
   postedAt: String
   applicants: [User!]
   applicationCount: Int!
+  requires_us_citizenship: Boolean
+  minimum_degree_year: Int
 }
 input JobInput {
   title: String!
@@ -81,6 +83,8 @@ input JobUpdateInput {
   salaryRange: String
   skillsRequired: [String]
   description: String
+  requires_us_citizenship: Boolean
+  minimum_degree_year: Int
 }
 type Application {
   appId: Int!
@@ -139,6 +143,7 @@ type Mutation {
   deleteUserByFields(firstName: String, lastName: String, dob: String): Boolean!
   createJob(input: JobInput!): Job!
   updateJob(jobId: Int!, input: JobUpdateInput!): Job
+  updateJobByFields(title: String!, company: String, input: JobUpdateInput!): Job
   deleteJob(jobId: Int!): Boolean!
   addSkillsToJob(jobId: Int!, skills: [String!]!): Job
   deleteJobByFields(title: String!, company: String): Boolean!

@@ -11,6 +11,8 @@ def to_job_output(doc: dict) -> dict:
         "title": doc.get("title"), "company": doc.get("company"), "location": doc.get("location"),
         "salaryRange": doc.get("salaryRange"), "skillsRequired": doc.get("skillsRequired"),
         "description": doc.get("description"), "postedAt": doc.get("postedAt"),
+        "requires_us_citizenship": doc.get("requires_us_citizenship"),
+        "minimum_degree_year": doc.get("minimum_degree_year"),
     }
 
 def build_job_filter(company: Optional[str], location: Optional[str], title: Optional[str]) -> Dict[str, Any]:
