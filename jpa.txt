@@ -80,76 +80,6 @@ src/frontend-react/src/ResumeUploader.js
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/frontend-react/src/CompleteProfilePage.js">
-// src/frontend-react/src/CompleteProfilePage.js
-import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import apiClient from './api';
-import './App.css'; // Reuse styles
-
-const CompleteProfilePage = () => {
-  const { userId } = useParams(); // Get the UserID from the URL
-  const navigate = useNavigate();
-  const [file, setFile] = useState(null);
-  const [status, setStatus] = useState('idle');
-  const [errorMessage, setErrorMessage] = useState('');
-
-  const handleFileChange = (e) => {
-    setFile(e.target.files[0]);
-  };
-
-  const handleUpload = async () => {
-    if (!file) {
-      setErrorMessage('Please select a resume file to upload.');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('resume', file);
-    
-    setStatus('uploading');
-    setErrorMessage('');
-
-    try {
-      await apiClient.post(`/users/${userId}/resume`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setStatus('success');
-      alert('Success! Your profile is being updated with your resume details.');
-      navigate('/login'); // Redirect to login after success
-    } catch (error) {
-      setStatus('error');
-      const msg = error.response?.data?.error || 'Upload failed. Please try again.';
-      setErrorMessage(msg);
-    }
-  };
-
-  return (
-    <div className="login-container">
-      <div className="resume-uploader-panel" style={{ maxWidth: '500px' }}>
-        <h2>Welcome! Your account is created.</h2>
-        <p>Optionally, you can upload your resume now to auto-fill your profile details.</p>
-        
-        <div className="uploader-controls">
-          <input type="file" onChange={handleFileChange} accept=".pdf,.docx" disabled={status === 'uploading'} />
-          <button onClick={handleUpload} disabled={status === 'uploading'}>
-            {status === 'uploading' ? 'Analyzing...' : 'Upload & Auto-Fill'}
-          </button>
-        </div>
-        
-        <button onClick={() => navigate('/login')} className="skip-button" style={{ marginTop: '20px' }}>
-          Skip for Now
-        </button>
-        
-        {status === 'error' && <p className="status-error" style={{ marginTop: '15px' }}>❌ {errorMessage}</p>}
-      </div>
-    </div>
-  );
-};
-
-export default CompleteProfilePage;
-</file>
-
 <file path="scripts/seed_db.py">
 # scripts/seed_db.py
 import os
@@ -574,6 +504,76 @@ apiClient.interceptors.request.use(config => {
 export default apiClient;
 </file>
 
+<file path="src/frontend-react/src/CompleteProfilePage.js">
+// src/frontend-react/src/CompleteProfilePage.js
+import React, { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import apiClient from './api';
+import './App.css'; // Reuse styles
+
+const CompleteProfilePage = () => {
+  const { userId } = useParams(); // Get the UserID from the URL
+  const navigate = useNavigate();
+  const [file, setFile] = useState(null);
+  const [status, setStatus] = useState('idle');
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const handleFileChange = (e) => {
+    setFile(e.target.files[0]);
+  };
+
+  const handleUpload = async () => {
+    if (!file) {
+      setErrorMessage('Please select a resume file to upload.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('resume', file);
+    
+    setStatus('uploading');
+    setErrorMessage('');
+
+    try {
+      await apiClient.post(`/users/${userId}/resume`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setStatus('success');
+      alert('Success! Your profile is being updated with your resume details.');
+      navigate('/login'); // Redirect to login after success
+    } catch (error) {
+      setStatus('error');
+      const msg = error.response?.data?.error || 'Upload failed. Please try again.';
+      setErrorMessage(msg);
+    }
+  };
+
+  return (
+    <div className="login-container">
+      <div className="resume-uploader-panel" style={{ maxWidth: '500px' }}>
+        <h2>Welcome! Your account is created.</h2>
+        <p>Optionally, you can upload your resume now to auto-fill your profile details.</p>
+        
+        <div className="uploader-controls">
+          <input type="file" onChange={handleFileChange} accept=".pdf,.docx" disabled={status === 'uploading'} />
+          <button onClick={handleUpload} disabled={status === 'uploading'}>
+            {status === 'uploading' ? 'Analyzing...' : 'Upload & Auto-Fill'}
+          </button>
+        </div>
+        
+        <button onClick={() => navigate('/login')} className="skip-button" style={{ marginTop: '20px' }}>
+          Skip for Now
+        </button>
+        
+        {status === 'error' && <p className="status-error" style={{ marginTop: '15px' }}>❌ {errorMessage}</p>}
+      </div>
+    </div>
+  );
+};
+
+export default CompleteProfilePage;
+</file>
+
 <file path="src/frontend-react/src/LoginPage.css">
 /* src/frontend-react/src/App.css */
 
@@ -967,59 +967,6 @@ def count_applications(query: Dict[str, Any]) -> int:
     return applications_collection().count_documents(query)
 </file>
 
-<file path="src/backend/repository/job_repo.py">
-# src/backend/repository/job_repo.py
-import re
-from typing import Optional, Dict, Any, List
-from pymongo import ReturnDocument
-from ..db import jobs_collection
-
-def to_job_output(doc: dict) -> dict:
-    if not doc: return None
-    return {
-        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
-        "title": doc.get("title"), "company": doc.get("company"), "location": doc.get("location"),
-        "salaryRange": doc.get("salaryRange"), "skillsRequired": doc.get("skillsRequired"),
-        "description": doc.get("description"), "postedAt": doc.get("postedAt"),
-    }
-
-def build_job_filter(company: Optional[str], location: Optional[str], title: Optional[str]) -> Dict[str, Any]:
-    q: Dict[str, Any] = {}
-    if company: q["company"] = {"$regex": f"^{re.escape(company)}$", "$options": "i"}
-    if location: q["location"] = {"$regex": f"^{re.escape(location)}$", "$options": "i"}
-    if title: q["title"] = {"$regex": f".*{re.escape(title)}.*", "$options": "i"}
-    return q
-
-def find_jobs(q: Dict[str, Any], skip: Optional[int], limit: Optional[int]) -> List[dict]:
-    cursor = jobs_collection().find(q, {"_id": 0})
-    if skip is not None: cursor = cursor.skip(int(skip))
-    if limit is not None: cursor = cursor.limit(int(limit))
-    return list(cursor)
-
-def find_job_by_id(job_id: int) -> Optional[dict]:
-    return jobs_collection().find_one({"jobId": int(job_id)}, {"_id": 0})
-
-def insert_job(doc: dict) -> None:
-    jobs_collection().insert_one(doc)
-
-def update_one_job(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Optional[dict]:
-    return jobs_collection().find_one_and_update(
-        q, {"$set": set_fields}, projection={"_id": 0}, return_document=ReturnDocument.AFTER
-    )
-
-def delete_one_job(q: Dict[str, Any]) -> int:
-    res = jobs_collection().delete_one(q)
-    return int(res.deleted_count)
-
-def add_skills_to_job(job_id: int, skills: List[str]) -> Optional[dict]:
-    return jobs_collection().find_one_and_update(
-        {"jobId": int(job_id)},
-        {"$addToSet": {"skillsRequired": {"$each": skills}}},
-        projection={"_id": 0},
-        return_document=ReturnDocument.AFTER,
-    )
-</file>
-
 <file path="src/backend/resolvers/job_resolvers.py">
 # src/backend/resolvers/job_resolvers.py
 from datetime import datetime
@@ -1154,6 +1101,79 @@ def resolve_delete_job_by_fields(obj, info, title, company=None):
     return count == 1
 </file>
 
+<file path="src/frontend-react/src/index.js">
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+import App from './App';
+import './App.css';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+      <BrowserRouter>  {/* Wrap App with BrowserRouter */}
+      <App />
+    </BrowserRouter>
+  </React.StrictMode>
+);
+
+// Note: A real setup would also need an HTML file (index.html) 
+// and potentially CSS, but 'react-scripts start' handles index.html creation.
+</file>
+
+<file path="src/backend/repository/job_repo.py">
+# src/backend/repository/job_repo.py
+import re
+from typing import Optional, Dict, Any, List
+from pymongo import ReturnDocument
+from ..db import jobs_collection
+
+def to_job_output(doc: dict) -> dict:
+    if not doc: return None
+    return {
+        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
+        "title": doc.get("title"), "company": doc.get("company"), "location": doc.get("location"),
+        "salaryRange": doc.get("salaryRange"), "skillsRequired": doc.get("skillsRequired"),
+        "description": doc.get("description"), "postedAt": doc.get("postedAt"),
+    }
+
+def build_job_filter(company: Optional[str], location: Optional[str], title: Optional[str]) -> Dict[str, Any]:
+    q: Dict[str, Any] = {}
+    if company: q["company"] = {"$regex": f"^{re.escape(company)}$", "$options": "i"}
+    if location: q["location"] = {"$regex": f"^{re.escape(location)}$", "$options": "i"}
+    if title: q["title"] = {"$regex": f".*{re.escape(title)}.*", "$options": "i"}
+    return q
+
+def find_jobs(q: Dict[str, Any], skip: Optional[int], limit: Optional[int]) -> List[dict]:
+    cursor = jobs_collection().find(q, {"_id": 0})
+    if skip is not None: cursor = cursor.skip(int(skip))
+    if limit is not None: cursor = cursor.limit(int(limit))
+    return list(cursor)
+
+def find_job_by_id(job_id: int) -> Optional[dict]:
+    return jobs_collection().find_one({"jobId": int(job_id)}, {"_id": 0})
+
+def insert_job(doc: dict) -> None:
+    jobs_collection().insert_one(doc)
+
+def update_one_job(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Optional[dict]:
+    return jobs_collection().find_one_and_update(
+        q, {"$set": set_fields}, projection={"_id": 0}, return_document=ReturnDocument.AFTER
+    )
+
+def delete_one_job(q: Dict[str, Any]) -> int:
+    res = jobs_collection().delete_one(q)
+    return int(res.deleted_count)
+
+def add_skills_to_job(job_id: int, skills: List[str]) -> Optional[dict]:
+    return jobs_collection().find_one_and_update(
+        {"jobId": int(job_id)},
+        {"$addToSet": {"skillsRequired": {"$each": skills}}},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+</file>
+
 <file path="src/backend/services/resume_parser_service.py">
 # src/backend/services/resume_parser_service.py
 import os
@@ -1180,13 +1200,18 @@ def _extract_text_from_docx(file_path: str) -> str:
 
 def _get_llm_parsed_data(resume_text: str) -> Optional[dict]:
     """Sends resume text to the LLM for structured data extraction."""
+    # --- UPDATED, MORE DETAILED PROMPT ---
     prompt = (
         "You are an expert HR assistant. Analyze the following resume text and extract the "
         "specified fields into a valid JSON object. The fields are: "
         "'skills' (a list of key technical skills), "
         "'years_of_experience' (an integer, calculated if necessary), "
-        "'is_us_citizen' (a boolean, infer this from phrases like 'US Citizen' or work authorization, default to false if unclear), and "
-        "'highest_degree_year' (an integer representing the graduation year of the highest degree mentioned). "
+        "'is_us_citizen' (a boolean, infer this from phrases like 'US Citizen' or work authorization, default to false if unclear), "
+        "'highest_degree_year' (an integer representing the graduation year of the highest degree mentioned), "
+        "'professionalTitle' (the user's most recent job title, e.g., 'Software Engineer'), "
+        "'city' (the user's city of residence), "
+        "'country' (the user's country of residence), and "
+        "'highest_qualification' (the name of the user's highest degree, e.g., 'Master of Science in Computer Science'). "
         "Respond ONLY with the JSON object and nothing else.\n\n"
         f"Resume Text:\n---\n{resume_text}"
     )
@@ -1203,7 +1228,6 @@ def _get_llm_parsed_data(resume_text: str) -> Optional[dict]:
         )
         response.raise_for_status()
         
-        # The 'format: "json"' parameter ensures the response is a JSON string.
         json_string = response.json().get("response", "{}")
         return json.loads(json_string)
     except (requests.RequestException, json.JSONDecodeError) as e:
@@ -1213,7 +1237,6 @@ def _get_llm_parsed_data(resume_text: str) -> Optional[dict]:
 def parse_resume_and_update_user(file_path: str, user_id: int):
     """
     Orchestrates the resume parsing process and updates the user profile.
-    This should be run as a background task in a real application.
     """
     print(f"Starting resume parsing for user {user_id} from file {file_path}...")
     try:
@@ -1236,165 +1259,23 @@ def parse_resume_and_update_user(file_path: str, user_id: int):
             print("LLM parsing failed or returned no data.")
             return
             
-        # Prepare the update document, ensuring we only use valid fields
+        # --- UPDATED: Allow more fields to be updated ---
         update_doc = {k: v for k, v in parsed_data.items() if k in [
-            'skills', 'years_of_experience', 'is_us_citizen', 'highest_degree_year'
+            'skills', 'years_of_experience', 'is_us_citizen', 'highest_degree_year',
+            'professionalTitle', 'city', 'country', 'highest_qualification'
         ]}
 
         if update_doc:
-            # For skills, we should append rather than overwrite
             if 'skills' in update_doc and isinstance(update_doc['skills'], list):
-                # Using a dedicated repo function is better
                 user_repo.add_skills_to_user(user_id, update_doc.pop('skills'))
 
-            # For other fields, we perform a standard update
             if update_doc:
                 user_repo.update_one({"UserID": user_id}, update_doc)
             
-            print(f"Successfully updated user {user_id} profile from resume.")
+            print(f"Successfully updated user {user_id} profile from resume with data: {update_doc}")
 
     except Exception as e:
         print(f"An unexpected error occurred during resume processing: {e}")
-</file>
-
-<file path="src/frontend-react/src/index.js">
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
-import App from './App';
-import './App.css';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-      <BrowserRouter>  {/* Wrap App with BrowserRouter */}
-      <App />
-    </BrowserRouter>
-  </React.StrictMode>
-);
-
-// Note: A real setup would also need an HTML file (index.html) 
-// and potentially CSS, but 'react-scripts start' handles index.html creation.
-</file>
-
-<file path="src/frontend-react/src/LoginPage.js">
-// src/frontend-react/src/LoginPage.js
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import './LoginPage.css';
-
-const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'http://localhost:8000';
-
-function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState('Applicant');
-  const [isLogin, setIsLogin] = useState(true);
-  const navigate = useNavigate();
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (isLogin) {
-      // --- Sign-In Logic with Persistent Session ---
-      try {
-        const payload = { email, password };
-        const response = await axios.post(`${API_ENDPOINT}/login`, payload);
-        
-        const expirationTime = new Date().getTime() + (48 * 60 * 60 * 1000); // 48 hours in milliseconds
-        const sessionData = {
-          user: response.data.user,
-          expiresAt: expirationTime,
-        };
-
-        localStorage.setItem('session', JSON.stringify(sessionData));
-        navigate('/chat');
-
-      } catch (error) {
-        if (error.response && error.response.data.error) {
-          alert(`Login failed: ${error.response.data.error}`);
-        } else {
-          alert('Login failed: An unknown error occurred.');
-        }
-        console.error('Login error:', error);
-      }
-    } else {
-      // --- UPDATED Registration Logic ---
-      try {
-        const payload = { email, firstName, lastName, password, role };
-        const response = await axios.post(`${API_ENDPOINT}/register`, payload);
-
-        // On success, get the new UserID from the response
-        const newUserId = response.data.UserID;
-        
-        // Redirect to the new profile completion page, passing the ID in the URL
-        navigate(`/complete-profile/${newUserId}`);
-
-      } catch (error) {
-        if (error.response && error.response.data.error) {
-          alert(`Registration failed: ${error.response.data.error}`);
-        } else {
-          alert('Registration failed: An unknown error occurred.');
-        }
-        console.error('Registration error:', error);
-      }
-    }
-  };
-
-  return (
-    <div className="login-container">
-      <form onSubmit={handleSubmit} className="login-form">
-        <h2>{isLogin ? 'Sign In to JobChat.AI' : 'Create Your Account'}</h2>
-        
-        {!isLogin && (
-          <>
-            <div className="input-group">
-              <label>First Name</label>
-              <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
-            </div>
-            <div className="input-group">
-              <label>Last Name</label>
-              <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
-            </div>
-            <div className="input-group">
-              <label>I am a</label>
-              <select value={role} onChange={(e) => setRole(e.target.value)} required>
-                <option value="Applicant">User / Applicant</option>
-                <option value="Recruiter">Recruiter</option>
-              </select>
-            </div>
-          </>
-        )}
-
-        <div className="input-group">
-          <label>Email</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        </div>
-
-        <div className="input-group">
-          <label>Password</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </div>
-        
-        <button type="submit" className="login-button">
-          {isLogin ? 'Sign In' : 'Sign Up'}
-        </button>
-        
-        <p className="toggle-form">
-          {isLogin ? "Don't have an account?" : "Already have an account?"}
-          <button type="button" onClick={() => setIsLogin(!isLogin)} className="toggle-button">
-            {isLogin ? 'Sign Up' : 'Sign In'}
-          </button>
-        </p>
-      </form>
-    </div>
-  );
-}
-
-export default LoginPage;
 </file>
 
 <file path="src/frontend-react/src/ResultsDisplay.css">
@@ -1549,6 +1430,20 @@ export default LoginPage;
     font-size: 0.9em;
     white-space: pre-wrap; /* Respects line breaks in notes */
 }
+
+.citizen-badge {
+    font-size: 0.8em;
+    font-weight: bold;
+    color: #2e7d32;
+    background-color: #e8f5e9;
+    padding: 3px 8px;
+    border-radius: 12px;
+}
+
+[data-theme='dark'] .citizen-badge {
+    color: #a5d6a7;
+    background-color: #1b5e20;
+}
 </file>
 
 <file path="requirements.txt">
@@ -1563,285 +1458,6 @@ bcrypt
 Faker
 pypdf
 python-docx
-</file>
-
-<file path="src/backend/repository/user_repo.py">
-# src/backend/repository/user_repo.py
-import re
-from typing import Optional, Dict, Any, List
-from pymongo import ReturnDocument
-from ..db import users_collection
-
-def find_user_by_email(email: str) -> Optional[dict]:
-    return users_collection().find_one({"email": {"$regex": f"^{email}$", "$options": "i"}})
-
-def to_user_output(doc: dict) -> Optional[dict]:
-    if not doc: return None
-    return {
-        "UserID": doc.get("UserID"), "email": doc.get("email"), "firstName": doc.get("firstName"),
-        "lastName": doc.get("lastName"), "role": doc.get("role"), "phone_number": doc.get("phone_number"),
-        "city": doc.get("city"), "state_province": doc.get("state_province"), "country": doc.get("country"),
-        "linkedin_profile": doc.get("linkedin_profile"), "portfolio_url": doc.get("portfolio_url"),
-        "highest_qualification": doc.get("highest_qualification"), "years_of_experience": doc.get("years_of_experience"),
-        "createdAt": doc.get("createdAt"), "dob": doc.get("dob"), "skills": doc.get("skills"),
-        "professionalTitle": doc.get("professionalTitle"), "is_us_citizen": doc.get("is_us_citizen"),
-        "highest_degree_year": doc.get("highest_degree_year")
-    }
-
-def build_filter(first_name: Optional[str], last_name: Optional[str], dob: Optional[str], skills: Optional[List[str]] = None) -> Dict[str, Any]:
-    q = {}
-    if first_name: q["firstName"] = {"$regex": f"^{re.escape(first_name)}$", "$options": "i"}
-    if last_name: q["lastName"] = {"$regex": f"^{re.escape(last_name)}$", "$options": "i"}
-    if dob: q["dob"] = dob
-    if skills: q["skills"] = {"$all": skills}
-    return q
-
-def find_users(q: Dict[str, Any], skip: Optional[int], limit: Optional[int]) -> List[dict]:
-    cursor = users_collection().find(q, {"_id": 0, "password": 0})
-    if skip is not None: cursor = cursor.skip(int(skip))
-    if limit is not None: cursor = cursor.limit(int(limit))
-    return list(cursor)
-
-def find_one_by_id(user_id: int) -> Optional[dict]:
-    return users_collection().find_one({"UserID": int(user_id)}, {"_id": 0, "password": 0})
-
-def insert_user(doc: dict) -> None:
-    users_collection().insert_one(doc)
-
-def update_one(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Optional[dict]:
-    return users_collection().find_one_and_update(
-        q, {"$set": set_fields}, projection={"_id": 0, "password": 0}, return_document=ReturnDocument.AFTER
-    )
-
-def delete_one(q: Dict[str, Any]) -> int:
-    res = users_collection().delete_one(q)
-    return int(res.deleted_count)
-
-def add_skills_to_user(user_id: int, skills: List[str]) -> Optional[dict]:
-    return users_collection().find_one_and_update(
-        {"UserID": int(user_id)},
-        {"$addToSet": {"skills": {"$each": skills}}},
-        projection={"_id": 0, "password": 0},
-        return_document=ReturnDocument.AFTER,
-    )
-</file>
-
-<file path="src/backend/resolvers/application_resolvers.py">
-# src/backend/resolvers/application_resolvers.py
-from datetime import datetime
-from ariadne import QueryType, MutationType, ObjectType
-from ..db import next_application_id, to_application_output
-from ..validators.common_validators import clean_update_input
-from ..repository import user_repo, job_repo, application_repo
-
-query = QueryType()
-mutation = MutationType()
-application = ObjectType("Application")
-job = ObjectType("Job")
-
-@job.field("applicants")
-def resolve_job_applicants(job_obj, info):
-    job_id = job_obj.get("jobId")
-    if not job_id: return []
-    applications = application_repo.find_applications({"jobId": job_id})
-    if not applications: return []
-    user_ids = [app.get("userId") for app in applications]
-    if not user_ids: return []
-    applicant_docs = user_repo.find_users({"UserID": {"$in": user_ids}}, None, None)
-    return [user_repo.to_user_output(doc) for doc in applicant_docs]
-
-@job.field("applicationCount")
-def resolve_job_application_count(job_obj, info):
-    job_id = job_obj.get("jobId")
-    if not job_id: return 0
-    return application_repo.count_applications({"jobId": job_id})
-
-@query.field("applications")
-def resolve_applications(*_, userId=None, jobId=None, status=None):
-    q = {}
-    if userId: q["userId"] = int(userId)
-    if jobId: q["jobId"] = int(jobId)
-    if status: q["status"] = status
-    docs = application_repo.find_applications(q)
-    return [to_application_output(d) for d in docs]
-
-@query.field("applicationById")
-def resolve_application_by_id(*_, appId):
-    doc = application_repo.find_application_by_id(int(appId))
-    if not doc: raise ValueError(f"Application with ID {appId} not found.")
-    return to_application_output(doc)
-
-@application.field("candidate")
-def resolve_application_candidate(app_obj, _):
-    user_id = app_obj.get("userId")
-    if not user_id: return None
-    user_doc = user_repo.find_one_by_id(user_id)
-    return user_repo.to_user_output(user_doc)
-
-@application.field("job")
-def resolve_application_job(app_obj, _):
-    job_id = app_obj.get("jobId")
-    if not job_id: return None
-    job_doc = job_repo.find_job_by_id(job_id)
-    return job_repo.to_job_output(job_doc)
-
-@mutation.field("createApplication")
-def resolve_create_application(*_, input):
-    user_id, job_id = input.get("userId"), input.get("jobId")
-    if not user_repo.find_one_by_id(user_id): raise ValueError(f"Validation failed: User with ID {user_id} does not exist.")
-    if not job_repo.find_job_by_id(job_id): raise ValueError(f"Validation failed: Job with ID {job_id} does not exist.")
-    doc = {
-        "appId": next_application_id(), "userId": user_id, "jobId": job_id,
-        "status": "Applied", "submittedAt": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-        "notes": input.get("notes")
-    }
-    application_repo.insert_application(doc)
-    return to_application_output(doc)
-
-@mutation.field("apply")
-def resolve_apply(obj, info, userName, jobTitle, companyName=None):
-    name_parts = userName.strip().split()
-    first_name = name_parts[0] if name_parts else None
-    last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else None
-    if not first_name: raise ValueError("User name must be provided.")
-    user_filter = user_repo.build_filter(first_name, last_name, None, None)
-    matching_users = user_repo.find_users(user_filter, None, None)
-    if not matching_users: raise ValueError(f"Could not find a user named '{userName}'.")
-    if len(matching_users) > 1: raise ValueError(f"Found multiple users named '{userName}'. Please be more specific.")
-    user = matching_users[0]
-    
-    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
-    matching_jobs = job_repo.find_jobs(job_filter, None, None)
-    if not matching_jobs: raise ValueError(f"Could not find a job with title '{jobTitle}' at company '{companyName or ''}'.")
-    if len(matching_jobs) > 1: raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
-    job_doc = matching_jobs[0]
-
-    application_input = {"userId": user["UserID"], "jobId": job_doc["jobId"]}
-    # Use info.context
-    return resolve_create_application(None, info, input=application_input)
-
-@mutation.field("updateApplication")
-def resolve_update_application(*_, appId, input):
-    set_fields = clean_update_input(input)
-    if not set_fields: raise ValueError("No fields provided to update.")
-    updated = application_repo.update_one_application({"appId": int(appId)}, set_fields)
-    if not updated: raise ValueError(f"Application with ID {appId} not found for update.")
-    return to_application_output(updated)
-
-@mutation.field("updateApplicationStatusByNames")
-def resolve_update_application_status_by_names(obj, info, userName, jobTitle, newStatus, companyName=None):
-    user_role = info.context.get("user_role")
-    if user_role != "Recruiter": raise ValueError("Permission denied: You must be a Recruiter to update an application.")
-    # ... (logic for finding user and job)
-    updated_application = application_repo.update_one_application(application_filter, {"status": newStatus})
-    if not updated_application: raise ValueError(f"No application found for user '{userName}' at job '{jobTitle}'.")
-    # ... (logic for constructing full response)
-    return response_data
-
-@mutation.field("addNoteToApplicationByJob")
-def resolve_add_note_to_application_by_job(obj, info, jobTitle, note, companyName=None):
-    user = info.context.get("user")
-    if not user or not user.get("UserID"): raise ValueError("Permission denied: You must be logged in to add a note.")
-    user_id = user["UserID"]
-    # ... (logic for finding job and updating application)
-    updated_application = application_repo.update_one_application(application_filter, {"notes": note})
-    if not updated_application: raise ValueError(f"You have not applied for the '{jobTitle}' job.")
-    # ... (logic for constructing full response)
-    return response_data
-</file>
-
-<file path="src/backend/resolvers/user_resolvers.py">
-# src/backend/resolvers/user_resolvers.py
-from ariadne import QueryType, MutationType
-from datetime import datetime
-from ..validators.common_validators import require_non_empty_str, validate_date_str, clean_update_input
-from ..repository import user_repo
-from ..db import next_user_id
-
-query = QueryType()
-mutation = MutationType()
-
-@query.field("users")
-def resolve_users(*_, limit=None, skip=None, firstName=None, lastName=None, dob=None, skills=None):
-    if dob: dob = validate_date_str(dob)
-    q = user_repo.build_filter(firstName, lastName, dob, skills)
-    docs = user_repo.find_users(q, skip, limit)
-    return [user_repo.to_user_output(d) for d in docs]
-
-@query.field("userById")
-def resolve_user_by_id(*_, UserID):
-    doc = user_repo.find_one_by_id(int(UserID))
-    return user_repo.to_user_output(doc)
-
-@mutation.field("createUser")
-def resolve_create_user(*_, input):
-    email = require_non_empty_str(input.get("email"), "email")
-    if user_repo.find_user_by_email(email):
-        raise ValueError(f"A user with the email '{email}' already exists.")
-
-    doc = {
-        "UserID": next_user_id(), "email": email.lower(), "password": None,
-        "firstName": require_non_empty_str(input.get("firstName"), "firstName"),
-        "lastName": require_non_empty_str(input.get("lastName"), "lastName"),
-        "role": require_non_empty_str(input.get("role"), "role"),
-        "createdAt": datetime.utcnow().isoformat(), "phone_number": input.get("phone_number"),
-        "city": input.get("city"), "state_province": input.get("state_province"),
-        "country": input.get("country"), "linkedin_profile": input.get("linkedin_profile"),
-        "portfolio_url": input.get("portfolio_url"), "highest_qualification": input.get("highest_qualification"),
-        "years_of_experience": input.get("years_of_experience"), "dob": validate_date_str(input.get("dob")),
-        "skills": input.get("skills", []), "professionalTitle": input.get("professionalTitle"),
-        "is_us_citizen": input.get("is_us_citizen"), "highest_degree_year": input.get("highest_degree_year")
-    }
-    user_repo.insert_user(doc)
-    return user_repo.to_user_output(doc)
-
-@mutation.field("updateUser")
-def resolve_update_user(*_, UserID, input):
-    if "dob" in input and input.get("dob") is not None: input["dob"] = validate_date_str(input["dob"])
-    set_fields = clean_update_input(input)
-    if not set_fields: raise ValueError("No fields provided to update")
-    updated = user_repo.update_one({"UserID": int(UserID)}, set_fields)
-    if not updated: raise ValueError(f"User with ID {UserID} not found for update.")
-    return user_repo.to_user_output(updated)
-
-@mutation.field("updateUserByName")
-def resolve_update_user_by_name(*_, firstName=None, lastName=None, input=None):
-    q = user_repo.build_filter(firstName, lastName, None)
-    if not q: raise ValueError("Provide firstName and/or lastName to identify the user")
-    matches = user_repo.find_users(q, None, None)
-    if len(matches) == 0: raise ValueError("No user matched the provided name filter")
-    if len(matches) > 1: raise ValueError("Multiple users matched; please be more specific to target a single user")
-    
-    set_fields = clean_update_input(input or {})
-    if not set_fields: raise ValueError("No fields provided to update")
-    
-    updated = user_repo.update_one({"UserID": matches[0]["UserID"]}, set_fields)
-    return user_repo.to_user_output(updated)
-
-@mutation.field("deleteUser")
-def resolve_delete_user(*_, UserID):
-    return user_repo.delete_one({"UserID": int(UserID)}) == 1
-
-@mutation.field("deleteUserByFields")
-def resolve_delete_user_by_fields(*_, firstName=None, lastName=None, dob=None):
-    q = user_repo.build_filter(firstName, lastName, dob)
-    if not q: raise ValueError("Provide at least one filter: firstName, lastName, or dob")
-    matches = user_repo.find_users(q, None, None)
-    if len(matches) == 0: return False
-    if len(matches) > 1: raise ValueError("Multiple users matched; add more filters to target a single user")
-    return user_repo.delete_one(q) == 1
-
-@mutation.field("addSkillsToUser")
-def resolve_add_skills_to_user(obj, info, UserID, skills):
-    logged_in_user = info.context.get("user")
-    user_role = info.context.get("user_role")
-    
-    if not (logged_in_user and logged_in_user.get("UserID") == UserID) and user_role != "Recruiter":
-        raise ValueError("Permission denied: You can only add skills to your own profile.")
-    if not skills: raise ValueError("The 'skills' list cannot be empty.")
-    updated_user = user_repo.add_skills_to_user(UserID, skills)
-    if not updated_user: raise ValueError(f"User with ID {UserID} not found.")
-    return user_repo.to_user_output(updated_user)
 </file>
 
 <file path="src/frontend-react/src/App.css">
@@ -2118,67 +1734,434 @@ body {
 }
 </file>
 
-<file path="src/backend/schema.graphql">
-# src/backend/schema.graphql
+<file path="src/frontend-react/src/LoginPage.js">
+// src/frontend-react/src/LoginPage.js
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import './LoginPage.css';
 
-type User {
-  UserID: Int!, email: String!, firstName: String!, lastName: String!, role: String!, phone_number: String,
-  city: String, state_province: String, country: String, linkedin_profile: String, portfolio_url: String,
-  highest_qualification: String, years_of_experience: Int, createdAt: String, dob: String,
-  skills: [String], professionalTitle: String, is_us_citizen: Boolean, highest_degree_year: Int
-}
-input UserInput {
-  firstName: String!, lastName: String!, email: String!, role: String!, phone_number: String, city: String,
-  state_province: String, country: String, linkedin_profile: String, portfolio_url: String,
-  highest_qualification: String, years_of_experience: Int, dob: String, skills: [String], professionalTitle: String
-}
-input UserUpdateInput {
-  firstName: String, lastName: String, phone_number: String, city: String, state_province: String, country: String,
-  linkedin_profile: String, portfolio_url: String, highest_qualification: String, years_of_experience: Int,
-  dob: String, skills: [String], professionalTitle: String, is_us_citizen: Boolean, highest_degree_year: Int
-}
-type Job { 
-  jobId: Int!, title: String!, company: String, location: String, salaryRange: String, skillsRequired: [String], 
-  description: String, postedAt: String, applicants: [User!], applicationCount: Int!
-}
-input JobInput { title: String!, company: String, location: String, salaryRange: String, skillsRequired: [String], description: String }
-input JobUpdateInput { title: String, company: String, location: String, salaryRange: String, skillsRequired: [String], description: String }
-type Application {
-  appId: Int!, userId: Int!, jobId: Int!, status: String!, submittedAt: String!, 
-  notes: String, candidate: User, job: Job, resume_url: String
-}
-input ApplicationInput { userId: Int!, jobId: Int!, notes: String }
-input ApplicationUpdateInput { status: String, notes: String }
+const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'http://localhost:8000';
 
-type Query {
-  users(limit: Int, skip: Int, firstName: String, lastName: String, dob: String, skills: [String!]): [User!]!
-  userById(UserID: Int!): User
-  jobs(limit: Int, skip: Int, company: String, location: String, title: String): [Job!]!
-  jobById(jobId: Int!): Job
-  applications(userId: Int, jobId: Int, status: String): [Application!]!
-  applicationById(appId: Int!): Application
+function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('Applicant');
+  const [isLogin, setIsLogin] = useState(true);
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (isLogin) {
+      // --- Sign-In Logic with Persistent Session ---
+      try {
+        const payload = { email, password };
+        const response = await axios.post(`${API_ENDPOINT}/login`, payload);
+        
+        const expirationTime = new Date().getTime() + (48 * 60 * 60 * 1000); // 48 hours in milliseconds
+        const sessionData = {
+          user: response.data.user,
+          expiresAt: expirationTime,
+        };
+
+        localStorage.setItem('session', JSON.stringify(sessionData));
+        navigate('/chat');
+
+      } catch (error) {
+        if (error.response && error.response.data.error) {
+          alert(`Login failed: ${error.response.data.error}`);
+        } else {
+          alert('Login failed: An unknown error occurred.');
+        }
+        console.error('Login error:', error);
+      }
+    } else {
+      // --- UPDATED Registration Logic ---
+      try {
+        const payload = { email, firstName, lastName, password, role };
+        const response = await axios.post(`${API_ENDPOINT}/register`, payload);
+
+        // On success, get the new UserID from the response
+        const newUserId = response.data.UserID;
+        
+        // Redirect to the new profile completion page, passing the ID in the URL
+        navigate(`/complete-profile/${newUserId}`);
+
+      } catch (error) {
+        if (error.response && error.response.data.error) {
+          alert(`Registration failed: ${error.response.data.error}`);
+        } else {
+          alert('Registration failed: An unknown error occurred.');
+        }
+        console.error('Registration error:', error);
+      }
+    }
+  };
+
+  return (
+    <div className="login-container">
+      <form onSubmit={handleSubmit} className="login-form">
+        <h2>{isLogin ? 'Sign In to JobChat.AI' : 'Create Your Account'}</h2>
+        
+        {!isLogin && (
+          <>
+            <div className="input-group">
+              <label>First Name</label>
+              <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+            </div>
+            <div className="input-group">
+              <label>Last Name</label>
+              <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+            </div>
+            <div className="input-group">
+              <label>I am a</label>
+              <select value={role} onChange={(e) => setRole(e.target.value)} required>
+                <option value="Applicant">User / Applicant</option>
+                <option value="Recruiter">Recruiter</option>
+              </select>
+            </div>
+          </>
+        )}
+
+        <div className="input-group">
+          <label>Email</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </div>
+
+        <div className="input-group">
+          <label>Password</label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </div>
+        
+        <button type="submit" className="login-button">
+          {isLogin ? 'Sign In' : 'Sign Up'}
+        </button>
+        
+        <p className="toggle-form">
+          {isLogin ? "Don't have an account?" : "Already have an account?"}
+          <button type="button" onClick={() => setIsLogin(!isLogin)} className="toggle-button">
+            {isLogin ? 'Sign Up' : 'Sign In'}
+          </button>
+        </p>
+      </form>
+    </div>
+  );
 }
 
-type Mutation {
-  createUser(input: UserInput!): User!
-  updateUser(UserID: Int!, input: UserUpdateInput!): User!
-  updateUserByName(firstName: String, lastName: String, input: UserUpdateInput!): User!
-  deleteUser(UserID: Int!): Boolean!
-  deleteUserByFields(firstName: String, lastName: String, dob: String): Boolean!
-  
-  createJob(input: JobInput!): Job!
-  updateJob(jobId: Int!, input: JobUpdateInput!): Job
-  deleteJob(jobId: Int!): Boolean!
-  addSkillsToJob(jobId: Int!, skills: [String!]!): Job
-  deleteJobByFields(title: String!, company: String): Boolean!
-  
-  createApplication(input: ApplicationInput!): Application!
-  apply(userName: String!, jobTitle: String!, companyName: String): Application!
-  updateApplication(appId: Int!, input: ApplicationUpdateInput!): Application
-  addSkillsToUser(UserID: Int!, skills: [String!]!): User
-  updateApplicationStatusByNames(userName: String!, jobTitle: String!, companyName: String, newStatus: String!): Application
-  addNoteToApplicationByJob(jobTitle: String!, note: String!, companyName: String): Application
-}
+export default LoginPage;
+</file>
+
+<file path="src/backend/repository/user_repo.py">
+# src/backend/repository/user_repo.py
+import re
+from typing import Optional, Dict, Any, List
+from pymongo import ReturnDocument
+from ..db import users_collection
+
+def find_user_by_email(email: str) -> Optional[dict]:
+    return users_collection().find_one({"email": {"$regex": f"^{email}$", "$options": "i"}})
+
+def to_user_output(doc: dict) -> Optional[dict]:
+    if not doc: return None
+    return {
+        "UserID": doc.get("UserID"), "email": doc.get("email"), "firstName": doc.get("firstName"),
+        "lastName": doc.get("lastName"), "role": doc.get("role"), "phone_number": doc.get("phone_number"),
+        "city": doc.get("city"), "state_province": doc.get("state_province"), "country": doc.get("country"),
+        "linkedin_profile": doc.get("linkedin_profile"), "portfolio_url": doc.get("portfolio_url"),
+        "highest_qualification": doc.get("highest_qualification"), "years_of_experience": doc.get("years_of_experience"),
+        "createdAt": doc.get("createdAt"), "dob": doc.get("dob"), "skills": doc.get("skills"),
+        "professionalTitle": doc.get("professionalTitle"), "is_us_citizen": doc.get("is_us_citizen"),
+        "highest_degree_year": doc.get("highest_degree_year")
+    }
+
+# --- UPDATED build_filter function ---
+def build_filter(
+    first_name: Optional[str], 
+    last_name: Optional[str], 
+    dob: Optional[str], 
+    skills: Optional[List[str]] = None,
+    is_us_citizen: Optional[bool] = None,
+    years_of_experience_gte: Optional[int] = None
+) -> Dict[str, Any]:
+    """Builds a filter query, now including support for citizenship and experience."""
+    q = {}
+    if first_name:
+        q["firstName"] = {"$regex": f"^{re.escape(first_name)}$", "$options": "i"}
+    if last_name:
+        q["lastName"] = {"$regex": f"^{re.escape(last_name)}$", "$options": "i"}
+    if dob:
+        q["dob"] = dob
+    if skills:
+        q["skills"] = {"$all": skills}
+    
+    # --- ADD THIS NEW LOGIC ---
+    if is_us_citizen is not None:
+        q["is_us_citizen"] = is_us_citizen
+    
+    if years_of_experience_gte is not None:
+        # Use MongoDB's "greater than or equal to" operator
+        q["years_of_experience"] = {"$gte": years_of_experience_gte}
+        
+    return q
+
+def find_users(q: Dict[str, Any], skip: Optional[int], limit: Optional[int]) -> List[dict]:
+    cursor = users_collection().find(q, {"_id": 0, "password": 0})
+    if skip is not None: cursor = cursor.skip(int(skip))
+    if limit is not None: cursor = cursor.limit(int(limit))
+    return list(cursor)
+
+def find_one_by_id(user_id: int) -> Optional[dict]:
+    return users_collection().find_one({"UserID": int(user_id)}, {"_id": 0, "password": 0})
+
+def insert_user(doc: dict) -> None:
+    users_collection().insert_one(doc)
+
+def update_one(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Optional[dict]:
+    return users_collection().find_one_and_update(
+        q, {"$set": set_fields}, projection={"_id": 0, "password": 0}, return_document=ReturnDocument.AFTER
+    )
+
+def delete_one(q: Dict[str, Any]) -> int:
+    res = users_collection().delete_one(q)
+    return int(res.deleted_count)
+
+def add_skills_to_user(user_id: int, skills: List[str]) -> Optional[dict]:
+    return users_collection().find_one_and_update(
+        {"UserID": int(user_id)},
+        {"$addToSet": {"skills": {"$each": skills}}},
+        projection={"_id": 0, "password": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+</file>
+
+<file path="src/backend/resolvers/application_resolvers.py">
+# src/backend/resolvers/application_resolvers.py
+from datetime import datetime
+from ariadne import QueryType, MutationType, ObjectType
+from ..db import next_application_id, to_application_output
+from ..validators.common_validators import clean_update_input
+from ..repository import user_repo, job_repo, application_repo
+
+query = QueryType()
+mutation = MutationType()
+application = ObjectType("Application")
+job = ObjectType("Job")
+
+@job.field("applicants")
+def resolve_job_applicants(job_obj, info):
+    job_id = job_obj.get("jobId")
+    if not job_id: return []
+    applications = application_repo.find_applications({"jobId": job_id})
+    if not applications: return []
+    user_ids = [app.get("userId") for app in applications]
+    if not user_ids: return []
+    applicant_docs = user_repo.find_users({"UserID": {"$in": user_ids}}, None, None)
+    return [user_repo.to_user_output(doc) for doc in applicant_docs]
+
+@job.field("applicationCount")
+def resolve_job_application_count(job_obj, info):
+    job_id = job_obj.get("jobId")
+    if not job_id: return 0
+    return application_repo.count_applications({"jobId": job_id})
+
+@query.field("applications")
+def resolve_applications(*_, userId=None, jobId=None, status=None):
+    q = {}
+    if userId: q["userId"] = int(userId)
+    if jobId: q["jobId"] = int(jobId)
+    if status: q["status"] = status
+    docs = application_repo.find_applications(q)
+    return [to_application_output(d) for d in docs]
+
+@query.field("applicationById")
+def resolve_application_by_id(*_, appId):
+    doc = application_repo.find_application_by_id(int(appId))
+    if not doc: raise ValueError(f"Application with ID {appId} not found.")
+    return to_application_output(doc)
+
+@application.field("candidate")
+def resolve_application_candidate(app_obj, _):
+    user_id = app_obj.get("userId")
+    if not user_id: return None
+    user_doc = user_repo.find_one_by_id(user_id)
+    return user_repo.to_user_output(user_doc)
+
+@application.field("job")
+def resolve_application_job(app_obj, _):
+    job_id = app_obj.get("jobId")
+    if not job_id: return None
+    job_doc = job_repo.find_job_by_id(job_id)
+    return job_repo.to_job_output(job_doc)
+
+@mutation.field("createApplication")
+def resolve_create_application(*_, input):
+    user_id, job_id = input.get("userId"), input.get("jobId")
+    if not user_repo.find_one_by_id(user_id): raise ValueError(f"Validation failed: User with ID {user_id} does not exist.")
+    if not job_repo.find_job_by_id(job_id): raise ValueError(f"Validation failed: Job with ID {job_id} does not exist.")
+    doc = {
+        "appId": next_application_id(), "userId": user_id, "jobId": job_id,
+        "status": "Applied", "submittedAt": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "notes": input.get("notes")
+    }
+    application_repo.insert_application(doc)
+    return to_application_output(doc)
+
+@mutation.field("apply")
+def resolve_apply(obj, info, userName, jobTitle, companyName=None):
+    name_parts = userName.strip().split()
+    first_name = name_parts[0] if name_parts else None
+    last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else None
+    if not first_name: raise ValueError("User name must be provided.")
+    user_filter = user_repo.build_filter(first_name, last_name, None, None)
+    matching_users = user_repo.find_users(user_filter, None, None)
+    if not matching_users: raise ValueError(f"Could not find a user named '{userName}'.")
+    if len(matching_users) > 1: raise ValueError(f"Found multiple users named '{userName}'. Please be more specific.")
+    user = matching_users[0]
+    
+    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
+    matching_jobs = job_repo.find_jobs(job_filter, None, None)
+    if not matching_jobs: raise ValueError(f"Could not find a job with title '{jobTitle}' at company '{companyName or ''}'.")
+    if len(matching_jobs) > 1: raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
+    job_doc = matching_jobs[0]
+
+    application_input = {"userId": user["UserID"], "jobId": job_doc["jobId"]}
+    # Use info.context
+    return resolve_create_application(None, info, input=application_input)
+
+@mutation.field("updateApplication")
+def resolve_update_application(*_, appId, input):
+    set_fields = clean_update_input(input)
+    if not set_fields: raise ValueError("No fields provided to update.")
+    updated = application_repo.update_one_application({"appId": int(appId)}, set_fields)
+    if not updated: raise ValueError(f"Application with ID {appId} not found for update.")
+    return to_application_output(updated)
+
+@mutation.field("updateApplicationStatusByNames")
+def resolve_update_application_status_by_names(obj, info, userName, jobTitle, newStatus, companyName=None):
+    user_role = info.context.get("user_role")
+    if user_role != "Recruiter": raise ValueError("Permission denied: You must be a Recruiter to update an application.")
+    # ... (logic for finding user and job)
+    updated_application = application_repo.update_one_application(application_filter, {"status": newStatus})
+    if not updated_application: raise ValueError(f"No application found for user '{userName}' at job '{jobTitle}'.")
+    # ... (logic for constructing full response)
+    return response_data
+
+@mutation.field("addNoteToApplicationByJob")
+def resolve_add_note_to_application_by_job(obj, info, jobTitle, note, companyName=None):
+    user = info.context.get("user")
+    if not user or not user.get("UserID"): raise ValueError("Permission denied: You must be logged in to add a note.")
+    user_id = user["UserID"]
+    # ... (logic for finding job and updating application)
+    updated_application = application_repo.update_one_application(application_filter, {"notes": note})
+    if not updated_application: raise ValueError(f"You have not applied for the '{jobTitle}' job.")
+    # ... (logic for constructing full response)
+    return response_data
+</file>
+
+<file path="src/backend/resolvers/user_resolvers.py">
+# src/backend/resolvers/user_resolvers.py
+from ariadne import QueryType, MutationType
+from datetime import datetime
+from ..validators.common_validators import require_non_empty_str, validate_date_str, clean_update_input
+from ..repository import user_repo
+from ..db import next_user_id
+
+query = QueryType()
+mutation = MutationType()
+
+# --- UPDATED resolve_users function ---
+@query.field("users")
+def resolve_users(*_, limit=None, skip=None, firstName=None, lastName=None, dob=None, skills=None, isUSCitizen=None, yearsOfExperience_gte=None):
+    if dob:
+        dob = validate_date_str(dob)
+        
+    # Pass all arguments, including the new ones, to the filter builder
+    q = user_repo.build_filter(
+        firstName, lastName, dob, skills, 
+        is_us_citizen=isUSCitizen, 
+        years_of_experience_gte=yearsOfExperience_gte
+    )
+    
+    docs = user_repo.find_users(q, skip, limit)
+    return [user_repo.to_user_output(d) for d in docs]
+
+@query.field("userById")
+def resolve_user_by_id(*_, UserID):
+    doc = user_repo.find_one_by_id(int(UserID))
+    return user_repo.to_user_output(doc)
+
+@mutation.field("createUser")
+def resolve_create_user(*_, input):
+    email = require_non_empty_str(input.get("email"), "email")
+    if user_repo.find_user_by_email(email):
+        raise ValueError(f"A user with the email '{email}' already exists.")
+
+    doc = {
+        "UserID": next_user_id(), "email": email.lower(), "password": None,
+        "firstName": require_non_empty_str(input.get("firstName"), "firstName"),
+        "lastName": require_non_empty_str(input.get("lastName"), "lastName"),
+        "role": require_non_empty_str(input.get("role"), "role"),
+        "createdAt": datetime.utcnow().isoformat(), "phone_number": input.get("phone_number"),
+        "city": input.get("city"), "state_province": input.get("state_province"),
+        "country": input.get("country"), "linkedin_profile": input.get("linkedin_profile"),
+        "portfolio_url": input.get("portfolio_url"), "highest_qualification": input.get("highest_qualification"),
+        "years_of_experience": input.get("years_of_experience"), "dob": validate_date_str(input.get("dob")),
+        "skills": input.get("skills", []), "professionalTitle": input.get("professionalTitle"),
+        "is_us_citizen": input.get("is_us_citizen"), "highest_degree_year": input.get("highest_degree_year")
+    }
+    user_repo.insert_user(doc)
+    return user_repo.to_user_output(doc)
+
+@mutation.field("updateUser")
+def resolve_update_user(*_, UserID, input):
+    if "dob" in input and input.get("dob") is not None: input["dob"] = validate_date_str(input["dob"])
+    set_fields = clean_update_input(input)
+    if not set_fields: raise ValueError("No fields provided to update")
+    updated = user_repo.update_one({"UserID": int(UserID)}, set_fields)
+    if not updated: raise ValueError(f"User with ID {UserID} not found for update.")
+    return user_repo.to_user_output(updated)
+
+@mutation.field("updateUserByName")
+def resolve_update_user_by_name(*_, firstName=None, lastName=None, input=None):
+    q = user_repo.build_filter(firstName, lastName, None)
+    if not q: raise ValueError("Provide firstName and/or lastName to identify the user")
+    matches = user_repo.find_users(q, None, None)
+    if len(matches) == 0: raise ValueError("No user matched the provided name filter")
+    if len(matches) > 1: raise ValueError("Multiple users matched; please be more specific to target a single user")
+    
+    set_fields = clean_update_input(input or {})
+    if not set_fields: raise ValueError("No fields provided to update")
+    
+    updated = user_repo.update_one({"UserID": matches[0]["UserID"]}, set_fields)
+    return user_repo.to_user_output(updated)
+
+@mutation.field("deleteUser")
+def resolve_delete_user(*_, UserID):
+    return user_repo.delete_one({"UserID": int(UserID)}) == 1
+
+@mutation.field("deleteUserByFields")
+def resolve_delete_user_by_fields(*_, firstName=None, lastName=None, dob=None):
+    q = user_repo.build_filter(firstName, lastName, dob)
+    if not q: raise ValueError("Provide at least one filter: firstName, lastName, or dob")
+    matches = user_repo.find_users(q, None, None)
+    if len(matches) == 0: return False
+    if len(matches) > 1: raise ValueError("Multiple users matched; add more filters to target a single user")
+    return user_repo.delete_one(q) == 1
+
+@mutation.field("addSkillsToUser")
+def resolve_add_skills_to_user(obj, info, UserID, skills):
+    logged_in_user = info.context.get("user")
+    user_role = info.context.get("user_role")
+    
+    if not (logged_in_user and logged_in_user.get("UserID") == UserID) and user_role != "Recruiter":
+        raise ValueError("Permission denied: You can only add skills to your own profile.")
+    if not skills: raise ValueError("The 'skills' list cannot be empty.")
+    updated_user = user_repo.add_skills_to_user(UserID, skills)
+    if not updated_user: raise ValueError(f"User with ID {UserID} not found.")
+    return user_repo.to_user_output(updated_user)
 </file>
 
 <file path="src/backend/services/nl2gql_service.py">
@@ -2288,6 +2271,8 @@ def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[
         "Return ONLY the GraphQL operation with no explanations or markdown fences."
         f"{context_str}"
         "\n\nKey Instructions:\n"
+        "- To filter users by experience, use the `yearsOfExperience_gte: Int` argument. For '5 years of experience', use `users(yearsOfExperience_gte: 5)`.\n"
+        "- To filter users by citizenship, use the `isUSCitizen: Boolean` argument. For 'who are US citizens', use `users(isUSCitizen: true)`.\n"
         "- When a user wants to **ADD** skills to **their own profile**, you **MUST** use the `addSkillsToUser` mutation. For all other user profile updates, use `updateUser`.\n"
         "- When a user asks about **'my applications'**, you **MUST** use the `applications` query and filter it using the `userId` from the context.\n"
         "- When a user wants to **'add a note'** to their application, you **MUST** use the `addNoteToApplicationByJob` mutation.\n"
@@ -2394,6 +2379,7 @@ const UserResult = ({ user }) => (
     <div className="result-item">
         <div className="item-header">
             <span className="item-title">{user.firstName} {user.lastName}</span>
+            {user.is_us_citizen && <span className="citizen-badge">✅ US Citizen</span>}
             <span className="item-location">{user.city && user.country ? `${user.city}, ${user.country}` : ''}</span>
         </div>
         <div className="item-subtitle">{user.professionalTitle || 'No professional title provided'}</div>
@@ -2548,6 +2534,80 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
 };
 
 export default ResultsDisplay;
+</file>
+
+<file path="src/backend/schema.graphql">
+# src/backend/schema.graphql
+
+type User {
+  UserID: Int!, email: String!, firstName: String!, lastName: String!, role: String!, phone_number: String,
+  city: String, state_province: String, country: String, linkedin_profile: String, portfolio_url: String,
+  highest_qualification: String, years_of_experience: Int, createdAt: String, dob: String,
+  skills: [String], professionalTitle: String, is_us_citizen: Boolean, highest_degree_year: Int
+}
+input UserInput {
+  firstName: String!, lastName: String!, email: String!, role: String!, phone_number: String, city: String,
+  state_province: String, country: String, linkedin_profile: String, portfolio_url: String,
+  highest_qualification: String, years_of_experience: Int, dob: String, skills: [String], professionalTitle: String
+}
+input UserUpdateInput {
+  firstName: String, lastName: String, phone_number: String, city: String, state_province: String, country: String,
+  linkedin_profile: String, portfolio_url: String, highest_qualification: String, years_of_experience: Int,
+  dob: String, skills: [String], professionalTitle: String, is_us_citizen: Boolean, highest_degree_year: Int
+}
+type Job { 
+  jobId: Int!, title: String!, company: String, location: String, salaryRange: String, skillsRequired: [String], 
+  description: String, postedAt: String, applicants: [User!], applicationCount: Int!
+}
+input JobInput { title: String!, company: String, location: String, salaryRange: String, skillsRequired: [String], description: String }
+input JobUpdateInput { title: String, company: String, location: String, salaryRange: String, skillsRequired: [String], description: String }
+type Application {
+  appId: Int!, userId: Int!, jobId: Int!, status: String!, submittedAt: String!, 
+  notes: String, candidate: User, job: Job, resume_url: String
+}
+input ApplicationInput { userId: Int!, jobId: Int!, notes: String }
+input ApplicationUpdateInput { status: String, notes: String }
+
+type Query {
+  # Add the new filter arguments to the 'users' query
+  users(
+    limit: Int, 
+    skip: Int, 
+    firstName: String, 
+    lastName: String, 
+    dob: String, 
+    skills: [String!],
+    isUSCitizen: Boolean,
+    yearsOfExperience_gte: Int
+  ): [User!]!
+  
+  userById(UserID: Int!): User
+  jobs(limit: Int, skip: Int, company: String, location: String, title: String): [Job!]!
+  jobById(jobId: Int!): Job
+  applications(userId: Int, jobId: Int, status: String): [Application!]!
+  applicationById(appId: Int!): Application
+}
+
+type Mutation {
+  createUser(input: UserInput!): User!
+  updateUser(UserID: Int!, input: UserUpdateInput!): User!
+  updateUserByName(firstName: String, lastName: String, input: UserUpdateInput!): User!
+  deleteUser(UserID: Int!): Boolean!
+  deleteUserByFields(firstName: String, lastName: String, dob: String): Boolean!
+  
+  createJob(input: JobInput!): Job!
+  updateJob(jobId: Int!, input: JobUpdateInput!): Job
+  deleteJob(jobId: Int!): Boolean!
+  addSkillsToJob(jobId: Int!, skills: [String!]!): Job
+  deleteJobByFields(title: String!, company: String): Boolean!
+  
+  createApplication(input: ApplicationInput!): Application!
+  apply(userName: String!, jobTitle: String!, companyName: String): Application!
+  updateApplication(appId: Int!, input: ApplicationUpdateInput!): Application
+  addSkillsToUser(UserID: Int!, skills: [String!]!): User
+  updateApplicationStatusByNames(userName: String!, jobTitle: String!, companyName: String, newStatus: String!): Application
+  addNoteToApplicationByJob(jobTitle: String!, note: String!, companyName: String): Application
+}
 </file>
 
 <file path="src/backend/app.py">

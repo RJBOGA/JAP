@@ -1,38 +1,127 @@
 # src/backend/schema.graphql
-
 type User {
-  UserID: Int!, email: String!, firstName: String!, lastName: String!, role: String!, phone_number: String,
-  city: String, state_province: String, country: String, linkedin_profile: String, portfolio_url: String,
-  highest_qualification: String, years_of_experience: Int, createdAt: String, dob: String,
-  skills: [String], professionalTitle: String, is_us_citizen: Boolean, highest_degree_year: Int
+  UserID: Int!
+  email: String!
+  firstName: String!
+  lastName: String!
+  role: String!
+  phone_number: String
+  city: String
+  state_province: String
+  country: String
+  linkedin_profile: String
+  portfolio_url: String
+  highest_qualification: String
+  years_of_experience: Int
+  createdAt: String
+  dob: String
+  skills: [String]
+  professionalTitle: String
+  is_us_citizen: Boolean
+  highest_degree_year: Int
 }
 input UserInput {
-  firstName: String!, lastName: String!, email: String!, role: String!, phone_number: String, city: String,
-  state_province: String, country: String, linkedin_profile: String, portfolio_url: String,
-  highest_qualification: String, years_of_experience: Int, dob: String, skills: [String], professionalTitle: String
+  firstName: String!
+  lastName: String!
+  email: String!
+  role: String!
+  phone_number: String
+  city: String
+  state_province: String
+  country: String
+  linkedin_profile: String
+  portfolio_url: String
+  highest_qualification: String
+  years_of_experience: Int
+  dob: String
+  skills: [String]
+  professionalTitle: String
 }
 input UserUpdateInput {
-  firstName: String, lastName: String, phone_number: String, city: String, state_province: String, country: String,
-  linkedin_profile: String, portfolio_url: String, highest_qualification: String, years_of_experience: Int,
-  dob: String, skills: [String], professionalTitle: String, is_us_citizen: Boolean, highest_degree_year: Int
+  firstName: String
+  lastName: String
+  phone_number: String
+  city: String
+  state_province: String
+  country: String
+  linkedin_profile: String
+  portfolio_url: String
+  highest_qualification: String
+  years_of_experience: Int
+  dob: String
+  skills: [String]
+  professionalTitle: String
+  is_us_citizen: Boolean
+  highest_degree_year: Int
 }
-type Job { 
-  jobId: Int!, title: String!, company: String, location: String, salaryRange: String, skillsRequired: [String], 
-  description: String, postedAt: String, applicants: [User!], applicationCount: Int!
+type Job {
+  jobId: Int!
+  title: String!
+  company: String
+  location: String
+  salaryRange: String
+  skillsRequired: [String]
+  description: String
+  postedAt: String
+  applicants: [User!]
+  applicationCount: Int!
 }
-input JobInput { title: String!, company: String, location: String, salaryRange: String, skillsRequired: [String], description: String }
-input JobUpdateInput { title: String, company: String, location: String, salaryRange: String, skillsRequired: [String], description: String }
+input JobInput {
+  title: String!
+  company: String
+  location: String
+  salaryRange: String
+  skillsRequired: [String]
+  description: String
+}
+input JobUpdateInput {
+  title: String
+  company: String
+  location: String
+  salaryRange: String
+  skillsRequired: [String]
+  description: String
+}
 type Application {
-  appId: Int!, userId: Int!, jobId: Int!, status: String!, submittedAt: String!, 
-  notes: String, candidate: User, job: Job, resume_url: String
+  appId: Int!
+  userId: Int!
+  jobId: Int!
+  status: String!
+  submittedAt: String!
+  notes: String
+  candidate: User
+  job: Job
+  resume_url: String
 }
-input ApplicationInput { userId: Int!, jobId: Int!, notes: String }
-input ApplicationUpdateInput { status: String, notes: String }
+input ApplicationInput {
+  userId: Int!
+  jobId: Int!
+  notes: String
+}
+input ApplicationUpdateInput {
+  status: String
+  notes: String
+}
 
 type Query {
-  users(limit: Int, skip: Int, firstName: String, lastName: String, dob: String, skills: [String!]): [User!]!
+  users(
+    limit: Int
+    skip: Int
+    firstName: String
+    lastName: String
+    dob: String
+    skills: [String!]
+    isUSCitizen: Boolean
+    yearsOfExperience_gte: Int
+  ): [User!]!
   userById(UserID: Int!): User
-  jobs(limit: Int, skip: Int, company: String, location: String, title: String): [Job!]!
+  jobs(
+    limit: Int
+    skip: Int
+    company: String
+    location: String
+    title: String
+  ): [Job!]!
   jobById(jobId: Int!): Job
   applications(userId: Int, jobId: Int, status: String): [Application!]!
   applicationById(appId: Int!): Application
@@ -41,20 +130,31 @@ type Query {
 type Mutation {
   createUser(input: UserInput!): User!
   updateUser(UserID: Int!, input: UserUpdateInput!): User!
-  updateUserByName(firstName: String, lastName: String, input: UserUpdateInput!): User!
+  updateUserByName(
+    firstName: String
+    lastName: String
+    input: UserUpdateInput!
+  ): User!
   deleteUser(UserID: Int!): Boolean!
   deleteUserByFields(firstName: String, lastName: String, dob: String): Boolean!
-  
   createJob(input: JobInput!): Job!
   updateJob(jobId: Int!, input: JobUpdateInput!): Job
   deleteJob(jobId: Int!): Boolean!
   addSkillsToJob(jobId: Int!, skills: [String!]!): Job
   deleteJobByFields(title: String!, company: String): Boolean!
-  
   createApplication(input: ApplicationInput!): Application!
   apply(userName: String!, jobTitle: String!, companyName: String): Application!
   updateApplication(appId: Int!, input: ApplicationUpdateInput!): Application
   addSkillsToUser(UserID: Int!, skills: [String!]!): User
-  updateApplicationStatusByNames(userName: String!, jobTitle: String!, companyName: String, newStatus: String!): Application
-  addNoteToApplicationByJob(jobTitle: String!, note: String!, companyName: String): Application
+  updateApplicationStatusByNames(
+    userName: String!
+    jobTitle: String!
+    companyName: String
+    newStatus: String!
+  ): Application
+  addNoteToApplicationByJob(
+    jobTitle: String!
+    note: String!
+    companyName: String
+  ): Application
 }

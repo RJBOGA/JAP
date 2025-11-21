@@ -23,6 +23,7 @@ const UserResult = ({ user }) => (
     <div className="result-item">
         <div className="item-header">
             <span className="item-title">{user.firstName} {user.lastName}</span>
+            {user.is_us_citizen && <span className="citizen-badge">✅ US Citizen</span>}
             <span className="item-location">{user.city && user.country ? `${user.city}, ${user.country}` : ''}</span>
         </div>
         <div className="item-subtitle">{user.professionalTitle || 'No professional title provided'}</div>

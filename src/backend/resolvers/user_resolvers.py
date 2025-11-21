@@ -9,9 +9,9 @@ query = QueryType()
 mutation = MutationType()
 
 @query.field("users")
-def resolve_users(*_, limit=None, skip=None, firstName=None, lastName=None, dob=None, skills=None):
+def resolve_users(*_, limit=None, skip=None, firstName=None, lastName=None, dob=None, skills=None, isUSCitizen=None, yearsOfExperience_gte=None):
     if dob: dob = validate_date_str(dob)
-    q = user_repo.build_filter(firstName, lastName, dob, skills)
+    q = user_repo.build_filter(firstName, lastName, dob, skills, is_us_citizen=isUSCitizen, years_of_experience_gte=yearsOfExperience_gte)
     docs = user_repo.find_users(q, skip, limit)
     return [user_repo.to_user_output(d) for d in docs]
 
@@ -23,22 +23,8 @@ def resolve_user_by_id(*_, UserID):
 @mutation.field("createUser")
 def resolve_create_user(*_, input):
     email = require_non_empty_str(input.get("email"), "email")
-    if user_repo.find_user_by_email(email):
-        raise ValueError(f"A user with the email '{email}' already exists.")
-
-    doc = {
-        "UserID": next_user_id(), "email": email.lower(), "password": None,
-        "firstName": require_non_empty_str(input.get("firstName"), "firstName"),
-        "lastName": require_non_empty_str(input.get("lastName"), "lastName"),
-        "role": require_non_empty_str(input.get("role"), "role"),
-        "createdAt": datetime.utcnow().isoformat(), "phone_number": input.get("phone_number"),
-        "city": input.get("city"), "state_province": input.get("state_province"),
-        "country": input.get("country"), "linkedin_profile": input.get("linkedin_profile"),
-        "portfolio_url": input.get("portfolio_url"), "highest_qualification": input.get("highest_qualification"),
-        "years_of_experience": input.get("years_of_experience"), "dob": validate_date_str(input.get("dob")),
-        "skills": input.get("skills", []), "professionalTitle": input.get("professionalTitle"),
-        "is_us_citizen": input.get("is_us_citizen"), "highest_degree_year": input.get("highest_degree_year")
-    }
+    if user_repo.find_user_by_email(email): raise ValueError(f"A user with the email '{email}' already exists.")
+    doc = {"UserID": next_user_id(), "email": email.lower(), "password": None, "firstName": require_non_empty_str(input.get("firstName"), "firstName"), "lastName": require_non_empty_str(input.get("lastName"), "lastName"), "role": require_non_empty_str(input.get("role"), "role"), "createdAt": datetime.utcnow().isoformat(), "phone_number": input.get("phone_number"), "city": input.get("city"), "state_province": input.get("state_province"), "country": input.get("country"), "linkedin_profile": input.get("linkedin_profile"), "portfolio_url": input.get("portfolio_url"), "highest_qualification": input.get("highest_qualification"), "years_of_experience": input.get("years_of_experience"), "dob": validate_date_str(input.get("dob")), "skills": input.get("skills", []), "professionalTitle": input.get("professionalTitle"), "is_us_citizen": input.get("is_us_citizen"), "highest_degree_year": input.get("highest_degree_year")}
     user_repo.insert_user(doc)
     return user_repo.to_user_output(doc)
 
@@ -58,10 +44,8 @@ def resolve_update_user_by_name(*_, firstName=None, lastName=None, input=None):
     matches = user_repo.find_users(q, None, None)
     if len(matches) == 0: raise ValueError("No user matched the provided name filter")
     if len(matches) > 1: raise ValueError("Multiple users matched; please be more specific to target a single user")
-    
     set_fields = clean_update_input(input or {})
     if not set_fields: raise ValueError("No fields provided to update")
-    
     updated = user_repo.update_one({"UserID": matches[0]["UserID"]}, set_fields)
     return user_repo.to_user_output(updated)
 
@@ -82,7 +66,6 @@ def resolve_delete_user_by_fields(*_, firstName=None, lastName=None, dob=None):
 def resolve_add_skills_to_user(obj, info, UserID, skills):
     logged_in_user = info.context.get("user")
     user_role = info.context.get("user_role")
-    
     if not (logged_in_user and logged_in_user.get("UserID") == UserID) and user_role != "Recruiter":
         raise ValueError("Permission denied: You can only add skills to your own profile.")
     if not skills: raise ValueError("The 'skills' list cannot be empty.")

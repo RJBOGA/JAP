@@ -72,25 +72,25 @@ def resolve_create_application(*_, input):
 @mutation.field("apply")
 def resolve_apply(obj, info, userName, jobTitle, companyName=None):
     name_parts = userName.strip().split()
-    first_name = name_parts[0] if name_parts else None
-    last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else None
-    if not first_name: raise ValueError("User name must be provided.")
+    first_name, last_name = (name_parts[0], " ".join(name_parts[1:])) if len(name_parts) > 1 else (name_parts[0], None)
+    if not first_name: raise ValueError("User name cannot be empty.")
+
+    # CORRECTED: Call the right filter function
     user_filter = user_repo.build_filter(first_name, last_name, None, None)
     matching_users = user_repo.find_users(user_filter, None, None)
-    if not matching_users: raise ValueError(f"Could not find a user named '{userName}'.")
+    
+    if len(matching_users) == 0: raise ValueError(f"Could not find a user named '{userName}'.")
     if len(matching_users) > 1: raise ValueError(f"Found multiple users named '{userName}'. Please be more specific.")
     user = matching_users[0]
     
     job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
     matching_jobs = job_repo.find_jobs(job_filter, None, None)
-    if not matching_jobs: raise ValueError(f"Could not find a job with title '{jobTitle}' at company '{companyName or ''}'.")
+    if len(matching_jobs) == 0: raise ValueError(f"Could not find a job with title '{jobTitle}' at company '{companyName or ''}'.")
     if len(matching_jobs) > 1: raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
-    job_doc = matching_jobs[0]
+    job = matching_jobs[0]
 
-    application_input = {"userId": user["UserID"], "jobId": job_doc["jobId"]}
-    # Use info.context
+    application_input = {"userId": user["UserID"], "jobId": job["jobId"]}
     return resolve_create_application(None, info, input=application_input)
-
 @mutation.field("updateApplication")
 def resolve_update_application(*_, appId, input):
     set_fields = clean_update_input(input)

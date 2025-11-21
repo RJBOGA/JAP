@@ -20,12 +20,14 @@ def to_user_output(doc: dict) -> Optional[dict]:
         "highest_degree_year": doc.get("highest_degree_year")
     }
 
-def build_filter(first_name: Optional[str], last_name: Optional[str], dob: Optional[str], skills: Optional[List[str]] = None) -> Dict[str, Any]:
+def build_filter(first_name: Optional[str], last_name: Optional[str], dob: Optional[str], skills: Optional[List[str]] = None, is_us_citizen: Optional[bool] = None, years_of_experience_gte: Optional[int] = None) -> Dict[str, Any]:
     q = {}
     if first_name: q["firstName"] = {"$regex": f"^{re.escape(first_name)}$", "$options": "i"}
     if last_name: q["lastName"] = {"$regex": f"^{re.escape(last_name)}$", "$options": "i"}
     if dob: q["dob"] = dob
     if skills: q["skills"] = {"$all": skills}
+    if is_us_citizen is not None: q["is_us_citizen"] = is_us_citizen
+    if years_of_experience_gte is not None: q["years_of_experience"] = {"$gte": years_of_experience_gte}
     return q
 
 def find_users(q: Dict[str, Any], skip: Optional[int], limit: Optional[int]) -> List[dict]:
@@ -41,18 +43,10 @@ def insert_user(doc: dict) -> None:
     users_collection().insert_one(doc)
 
 def update_one(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Optional[dict]:
-    return users_collection().find_one_and_update(
-        q, {"$set": set_fields}, projection={"_id": 0, "password": 0}, return_document=ReturnDocument.AFTER
-    )
+    return users_collection().find_one_and_update(q, {"$set": set_fields}, projection={"_id": 0, "password": 0}, return_document=ReturnDocument.AFTER)
 
 def delete_one(q: Dict[str, Any]) -> int:
-    res = users_collection().delete_one(q)
-    return int(res.deleted_count)
+    return users_collection().delete_one(q).deleted_count
 
 def add_skills_to_user(user_id: int, skills: List[str]) -> Optional[dict]:
-    return users_collection().find_one_and_update(
-        {"UserID": int(user_id)},
-        {"$addToSet": {"skills": {"$each": skills}}},
-        projection={"_id": 0, "password": 0},
-        return_document=ReturnDocument.AFTER,
-    )
+    return users_collection().find_one_and_update({"UserID": int(user_id)}, {"$addToSet": {"skills": {"$each": skills}}}, projection={"_id": 0, "password": 0}, return_document=ReturnDocument.AFTER)

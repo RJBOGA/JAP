@@ -104,6 +104,8 @@ def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[
         "Return ONLY the GraphQL operation with no explanations or markdown fences."
         f"{context_str}"
         "\n\nKey Instructions:\n"
+        "- To filter users by experience, use the `yearsOfExperience_gte: Int` argument. For '5 years of experience', use `users(yearsOfExperience_gte: 5)`.\n"
+        "- To filter users by citizenship, use the `isUSCitizen: Boolean` argument. For 'who are US citizens', use `users(isUSCitizen: true)`.\n"
         "- When a user wants to **ADD** skills to **their own profile**, you **MUST** use the `addSkillsToUser` mutation. For all other user profile updates, use `updateUser`.\n"
         "- When a user asks about **'my applications'**, you **MUST** use the `applications` query and filter it using the `userId` from the context.\n"
         "- When a user wants to **'add a note'** to their application, you **MUST** use the `addNoteToApplicationByJob` mutation.\n"
