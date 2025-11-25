@@ -19,6 +19,7 @@ type User {
   professionalTitle: String
   is_us_citizen: Boolean
   highest_degree_year: Int
+  applicationStatus: String
 }
 input UserInput {
   firstName: String!

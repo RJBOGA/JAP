@@ -163,3 +163,34 @@
     color: #a5d6a7;
     background-color: #1b5e20;
 }
+
+.item-status {
+    font-weight: bold;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.85em;
+    text-transform: capitalize;
+    background-color: #f0f0f0; /* Default neutral background */
+    color: #333; /* Default text color */
+}
+
+/* Specific Status Colors */
+.status-applied {
+    background-color: #e3f2fd; /* Light Blue */
+    color: #1565c0;
+}
+
+.status-interviewing, .status-interview {
+    background-color: #fffde7; /* Light Yellow */
+    color: #f9a825;
+}
+
+.status-hired {
+    background-color: #e8f5e9; /* Light Green */
+    color: #2e7d32;
+}
+
+.status-rejected {
+    background-color: #ffebee; /* Light Red */
+    color: #c62828;
+}

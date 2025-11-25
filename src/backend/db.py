@@ -101,4 +101,7 @@ def to_application_output(doc: dict): # New
         "status": doc.get("status"),
         "submittedAt": doc.get("submittedAt"),
         "notes": doc.get("notes"),
+        "userName": doc.get("userName"),
+        "jobTitle": doc.get("jobTitle"),
+        "companyName": doc.get("companyName"),
     }

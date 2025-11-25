@@ -23,6 +23,7 @@ const UserResult = ({ user }) => (
     <div className="result-item">
         <div className="item-header">
             <span className="item-title">{user.firstName} {user.lastName}</span>
+            {user.applicationStatus && <StatusBadge status={user.applicationStatus} />}
             {user.is_us_citizen && <span className="citizen-badge">✅ US Citizen</span>}
             <span className="item-location">{user.city && user.country ? `${user.city}, ${user.country}` : ''}</span>
         </div>
@@ -175,6 +176,17 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
       )}
     </div>
   );
+};
+
+// Helper function to render a status badge
+const StatusBadge = ({ status }) => {
+    let className = 'item-status';
+    if (status === 'Hired') className += ' status-hired';
+    else if (status === 'Interviewing' || status === 'interview') className += ' status-interviewing';
+    else if (status === 'Rejected') className += ' status-rejected';
+    else className += ' status-applied';
+
+    return <span className={className}>{status.charAt(0).toUpperCase() + status.slice(1)}</span>;
 };
 
 export default ResultsDisplay;
