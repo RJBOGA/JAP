@@ -15,10 +15,19 @@ apiClient.interceptors.request.use(config => {
     if (sessionJSON) {
       const session = JSON.parse(sessionJSON);
       const userRole = session.user?.role;
-      
+      const userId = session.user?.UserID;
+      const firstName = session.user?.firstName;
+      const lastName = session.user?.lastName;
+
       if (userRole) {
         // Add the role to a custom header for our GraphQL endpoint
         config.headers['X-User-Role'] = userRole;
+      }
+
+      if (userId) {
+        config.headers['X-User-ID'] = userId;
+        config.headers['X-User-FirstName'] = firstName || '';
+        config.headers['X-User-LastName'] = lastName || '';
       }
     }
   } catch (e) {

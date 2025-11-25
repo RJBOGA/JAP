@@ -1,0 +1,120 @@
+# QUICK TESTING REFERENCE CARD
+
+## Server Setup
+```bash
+# Start Backend
+python src/backend/app.py
+# Server: http://localhost:8000
+
+# Seed Test Data (Optional)
+python scripts/seed_db.py
+```
+
+---
+
+## QUICK TESTS (Using Seeded Data)
+
+### ✅ Test 1: Interview Invitation Email
+```graphql
+# Header: X-User-Role: Recruiter
+mutation {
+  updateApplicationStatusByNames(
+    userName: "Charlie Brown"
+    jobTitle: "Senior Python Developer"
+    companyName: "Google"
+    newStatus: "Interviewing"
+  ) {
+    appId status
+    candidate { email }
+  }
+}
+```
+**Expected**: Email sent to charlie.brown@email.com
+
+---
+
+### ✅ Test 2: Manager Notes
+```graphql
+# Header: X-User-Role: Recruiter
+mutation {
+  addManagerNoteToApplication(
+    userName: "Charlie Brown"
+    jobTitle: "Senior Python Developer"
+    companyName: "Google"
+    note: "Excellent skills, recommend final round"
+  ) {
+    appId notes
+  }
+}
+```
+**Expected**: Timestamped note added
+
+---
+
+### ✅ Test 3: Hire + Auto Job Closure + Mass Rejection
+```graphql
+# Header: X-User-Role: Recruiter  
+mutation {
+  updateApplicationStatusByNames(
+    userName: "Ethan Hunt"
+    jobTitle: "Data Scientist"
+    companyName: "Netflix"
+    newStatus: "Hired"
+  ) {
+    appId status
+    job { status }
+  }
+}
+```
+**Expected**:
+- Ethan hired ✅
+- Job closed ✅
+- Frank & Grace get rejection emails ✅
+
+---
+
+### ✅ Test 4: Natural Language
+```bash
+POST http://localhost:8000/nl2gql?run=true
+Header: X-User-Role: Recruiter
+Body:
+{
+  "query": "Interview Diana Prince for Product Manager at Meta"
+}
+```
+**Expected**: Diana's status updated, email sent
+
+---
+
+## Seeded Test Accounts
+
+### Recruiters
+- recruiter@google.com / password123
+- hiring@meta.com / password123
+
+### Applicants  
+- charlie.brown@email.com / password123
+- diana.prince@email.com / password123
+- ethan.hunt@email.com / password123
+- frank.miller@email.com / password123
+- grace.hopper@email.com / password123
+
+---
+
+## Verify Emails
+https://resend.com/emails
+
+---
+
+## GraphQL Explorer
+http://localhost:8000/graphql
+
+Remember to add header:
+```
+X-User-Role: Recruiter
+```
+
+---
+
+## Complete Guide
+See: MANUAL_TESTING_GUIDE.md (full step-by-step instructions)

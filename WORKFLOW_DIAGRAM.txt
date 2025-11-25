@@ -1,0 +1,257 @@
+# WORKFLOW VISUALIZATION - Interview Automation System
+
+## COMPLETE USER JOURNEY MAP
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     RECRUITER JOURNEY                                │
+└─────────────────────────────────────────────────────────────────────┘
+
+1. CREATE ACCOUNT
+   POST /register
+   { email, password, firstName, lastName, role: "Recruiter" }
+   ↓
+2. LOGIN
+   POST /login
+   → Receive user info (no token needed)
+   → Use X-User-Role: Recruiter header for all GraphQL requests
+   ↓
+3. POST A JOB
+   mutation { createJob(...) }
+   → Job created with status: null or "Open"
+   ↓
+4. WAIT FOR APPLICATIONS
+   ← Applicants apply to your job
+   ↓
+5. REVIEW APPLICATIONS
+   { jobs(...) { applicants { ... } } }
+   { applications(jobId: X) { ... } }
+   ↓
+6. INVITE TO INTERVIEW ⭐ [TRIGGERS EMAIL]
+   mutation {
+     updateApplicationStatusByNames(
+       status: "Interviewing"
+     )
+   }
+   ✉️ → Interview invitation email sent to candidate
+   ↓
+7. ADD MANAGER NOTES ⭐ [NEW FEATURE]
+   mutation {
+     addManagerNoteToApplication(
+       note: "Great interview..."
+     )
+   }
+   → Timestamped note appended
+   ↓
+8. HIRE CANDIDATE ⭐ [TRIGGERS AUTOMATION]
+   mutation {
+     updateApplicationStatusByNames(
+       status: "Hired"
+     )
+   }
+   → 🤖 AUTOMATED WORKFLOW:
+      1. Mark application as "Hired"
+      2. Close the job (status: "Closed")
+      3. Find all other applicants for this job
+      4. Send rejection emails to all unsuccessful candidates
+   ✉️ → Mass rejection emails sent (background thread)
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                     APPLICANT JOURNEY                                │
+└─────────────────────────────────────────────────────────────────────┘
+
+1. CREATE ACCOUNT
+   POST /register
+   { email, password, firstName, lastName, role: "Applicant" }
+   ↓
+2. UPDATE PROFILE
+   mutation {
+     updateUser(
+       skills: [...]
+       years_of_experience: X
+       professionalTitle: "..."
+     )
+   }
+   ↓
+3. (OPTIONAL) UPLOAD RESUME
+   POST /users/{userId}/resume
+   → PDF/DOCX parsed automatically
+   → Skills extracted and added to profile
+   ↓
+4. SEARCH FOR JOBS
+   { jobs(location: "...", title: "...") { ... } }
+   ↓
+5. APPLY TO JOB
+   mutation {
+     apply(
+       userName: "Your Name"
+       jobTitle: "Job Title"
+       companyName: "Company"
+     )
+   }
+   → Application created with status: "Applied"
+   ↓
+6. ADD APPLICATION NOTE (Optional)
+   mutation {
+     addNoteToApplicationByJob(
+       jobTitle: "..."
+       note: "Why I'm interested..."
+     )
+   }
+   ↓
+7. WAIT FOR RECRUITER DECISION
+   ↓
+8. RECEIVE EMAIL ⭐ [AUTOMATED]
+   
+   If status → "Interviewing":
+   ✉️ Receive interview invitation email
+   
+   If someone else hired for same job:
+   ✉️ Receive rejection notification email
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                     EMAIL AUTOMATION FLOWS                           │
+└─────────────────────────────────────────────────────────────────────┘
+
+FLOW 1: INTERVIEW INVITATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Trigger: updateApplicationStatusByNames(newStatus: "Interviewing")
+↓
+Check: newStatus == "Interviewing" ?
+↓ YES
+email_service.send_interview_invitation(
+  to: candidate.email
+  name: candidate.firstName
+  job: job.title
+  company: job.company
+)
+↓
+✉️ Email sent via Resend API
+Subject: "Interview Invitation for {job} position at {company}"
+Template: Congratulatory + next steps
+
+
+FLOW 2: AUTOMATED JOB CLOSURE & MASS REJECTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Trigger: updateApplicationStatusByNames(newStatus: "Hired")
+↓
+Check: newStatus == "Hired" ?
+↓ YES
+Start Background Thread → _handle_hired_status_side_effects()
+│
+├─ Step 1: Close the job
+│  job_repo.update_one(jobId, {status: "Closed"})
+│
+├─ Step 2: Find all other applications for this job
+│  applications = find({ jobId: X, userId: {$ne: hired_user_id} })
+│
+└─ Step 3: Send rejection emails to each
+   for app in applications:
+     if app.status not in ["Hired", "Rejected"]:
+       email_service.send_rejection_notification(
+         to: candidate.email
+         name: candidate.firstName
+         job: job.title
+         company: job.company
+       )
+↓
+✉️ Multiple emails sent via Resend API
+Subject: "Update on your application for {job} at {company}"
+Template: Professional rejection + best wishes
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                  AUTHORIZATION & SECURITY                            │
+└─────────────────────────────────────────────────────────────────────┘
+
+All GraphQL requests use header-based auth:
+  X-User-Role: "Recruiter" or "Applicant"
+
+RECRUITER-ONLY MUTATIONS:
+  ✓ updateApplicationStatusByNames
+  ✓ addManagerNoteToApplication
+  ✓ updateJobByFields
+  ✓ deleteJobByFields
+
+APPLICANT-ONLY MUTATIONS:
+  ✓ addNoteToApplicationByJob (only own applications)
+
+SHARED MUTATIONS:
+  ✓ apply (anyone can apply)
+  ✓ updateUser (only own profile)
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                  DATABASE STATE CHANGES                              │
+└─────────────────────────────────────────────────────────────────────┘
+
+APPLICATION STATUS LIFECYCLE:
+  Applied → Interviewing → Hired
+  Applied → Interviewing → Rejected
+  Applied → Rejected
+
+JOB STATUS LIFECYCLE:
+  null/Open → Closed (when someone hired)
+
+NOTES FIELD (Applications):
+  "Applicant note"
+  ↓ (recruiter adds note)
+  "Applicant note
+   --- Recruiter Note (2025-11-23): Manager feedback here"
+  ↓ (recruiter adds another note)
+  "Applicant note
+   --- Recruiter Note (2025-11-23): Manager feedback here
+   --- Recruiter Note (2025-11-24): Follow-up feedback"
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                  NATURAL LANGUAGE EXAMPLES                           │
+└─────────────────────────────────────────────────────────────────────┘
+
+POST /nl2gql?run=true
+Header: X-User-Role: Recruiter
+
+Example Queries:
+  "Interview Charlie Brown for the Google job"
+  → Generates: updateApplicationStatusByNames(...)
+  
+  "Hire Diana Prince for Product Manager at Meta"
+  → Generates: updateApplicationStatusByNames(..., newStatus: "Hired")
+  → Triggers: Email automation
+  
+  "Add note to Bob's application: Great coding skills"
+  → Generates: addManagerNoteToApplication(...)
+  
+  "Show me all applicants for the Netflix job"
+  → Generates: jobs(company: "Netflix") { applicants { ... } }
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                  TESTING CHECKLIST                                   │
+└─────────────────────────────────────────────────────────────────────┘
+
+□ Recruiter can create account
+□ Recruiter can post a job  
+□ Applicant can create account
+□ Applicant can update profile
+□ Applicant can apply to job
+□ Recruiter can view applications
+□ Recruiter can update status to "Interviewing"
+  □ Email sent to candidate ✉️
+  □ Email visible in Resend dashboard
+□ Recruiter can add manager notes
+  □ Notes are timestamped
+  □ Multiple notes preserved
+□ Recruiter can hire a candidate
+  □ Job automatically closed
+  □ Other applicants receive rejection emails ✉️
+  □ All emails visible in Resend dashboard
+□ Natural language commands work
+  □ Interview command works
+  □ Hire command works
+  □ Note command works
+
+Email Dashboard: https://resend.com/emails
+```

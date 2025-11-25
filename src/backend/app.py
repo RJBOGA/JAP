@@ -66,10 +66,35 @@ def graphql_explorer(): return explorer_html, 200
 def graphql_server():
     data = request.get_json(silent=True)
     user_role = request.headers.get("X-User-Role", "Applicant")
+    user_id = request.headers.get("X-User-ID")
+    first_name = request.headers.get("X-User-FirstName", "")
+    last_name = request.headers.get("X-User-LastName", "")
+    
+    # Build context with user information
+    context = {
+        "request": request, 
+        "user_role": user_role
+    }
+    
+    # Add user details to context if UserID is provided
+    if user_id:
+        try:
+            context["UserID"] = int(user_id)
+            context["firstName"] = first_name
+            context["lastName"] = last_name
+        except ValueError:
+            pass  # Invalid UserID, skip adding to context
+            
+    # DEBUG LOGGING
+    print(f"DEBUG: Incoming Headers - X-User-ID: {user_id}, Role: {user_role}")
+    print(f"DEBUG: Constructed Context keys: {list(context.keys())}")
+    if "UserID" in context:
+        print(f"DEBUG: Context UserID: {context['UserID']}")
+    
     success, result = graphql_sync(
         schema, 
         data, 
-        context_value={"request": request, "user_role": user_role}, 
+        context_value=context, 
         debug=app.debug
     )
     return jsonify(result), (200 if success else 400)
@@ -118,9 +143,27 @@ def nl2gql():
     with open(schema_path, "r", encoding="utf-8") as f: schema_sdl = f.read()
     def execute_graphql_query(gql_data):
         user_role = request.headers.get("X-User-Role", "Applicant")
+        user_id = request.headers.get("X-User-ID")
+        first_name = request.headers.get("X-User-FirstName", "")
+        last_name = request.headers.get("X-User-LastName", "")
+        
+        context = {
+            "request": request, 
+            "user_role": user_role, 
+            "user": user_context
+        }
+        
+        if user_id:
+            try:
+                context["UserID"] = int(user_id)
+                context["firstName"] = first_name
+                context["lastName"] = last_name
+            except ValueError:
+                pass
+
         return graphql_sync(
             schema, gql_data, 
-            context_value={"request": request, "user_role": user_role, "user": user_context}, 
+            context_value=context, 
             debug=app.debug
         )
     payload, status_code = process_nl2gql_request(user_text, schema_sdl, run_graphql, execute_graphql_query, user_context)

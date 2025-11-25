@@ -67,9 +67,6 @@ type Job {
   applicationCount: Int!
   requires_us_citizenship: Boolean
   minimum_degree_year: Int
-  status: String
-  posterUserId: Int
-  posterName: String
 }
 input JobInput {
   title: String!
@@ -88,7 +85,6 @@ input JobUpdateInput {
   description: String
   requires_us_citizenship: Boolean
   minimum_degree_year: Int
-  status: String
 }
 type Application {
   appId: Int!
@@ -100,10 +96,6 @@ type Application {
   candidate: User
   job: Job
   resume_url: String
-  # Denormalized fields for easier querying
-  userName: String
-  jobTitle: String
-  companyName: String
 }
 input ApplicationInput {
   userId: Int!
@@ -133,7 +125,6 @@ type Query {
     company: String
     location: String
     title: String
-    posterUserId: Int
   ): [Job!]!
   jobById(jobId: Int!): Job
   applications(userId: Int, jobId: Int, status: String): [Application!]!
@@ -170,14 +161,5 @@ type Mutation {
     jobTitle: String!
     note: String!
     companyName: String
-  ): Application
-  """
-  Allows a Recruiter to add private notes to a candidate's application.
-  """
-  addManagerNoteToApplication(
-    userName: String!
-    jobTitle: String!
-    companyName: String
-    note: String!
   ): Application
 }

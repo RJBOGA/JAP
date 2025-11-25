@@ -20,9 +20,9 @@ mutation = MutationType()
 # --- READ Operations (Publicly Accessible) ---
 
 @query.field("jobs")
-def resolve_jobs(obj, info, limit=None, skip=None, company=None, location=None, title=None):
+def resolve_jobs(obj, info, limit=None, skip=None, company=None, location=None, title=None, posterUserId=None):
     # No authorization check needed here. Anyone can search for jobs.
-    q = build_job_filter(company, location, title)
+    q = build_job_filter(company, location, title, posterUserId)
     docs = find_jobs(q, skip, limit)
     return [to_job_output(d) for d in docs]
 
@@ -45,6 +45,12 @@ def resolve_create_job(obj, info, input):
 
     title = require_non_empty_str(input.get("title"), "title")
     
+    # Get the logged-in recruiter's information
+    user_id = info.context.get("UserID")
+    user_first_name = info.context.get("firstName", "")
+    user_last_name = info.context.get("lastName", "")
+    poster_name = f"{user_first_name} {user_last_name}".strip()
+    
     doc = {
         "jobId": next_job_id(),
         "title": title,
@@ -54,6 +60,9 @@ def resolve_create_job(obj, info, input):
         "skillsRequired": input.get("skillsRequired", []),
         "description": input.get("description"),
         "postedAt": datetime.utcnow().strftime('%Y-%m-%d'),
+        "status": "Open",
+        "posterUserId": user_id,
+        "posterName": poster_name if poster_name else None,
     }
     insert_job(doc)
     return to_job_output(doc)
