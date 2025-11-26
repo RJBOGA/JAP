@@ -6,6 +6,9 @@ from ..validators.common_validators import clean_update_input
 from ..repository import user_repo, job_repo, application_repo
 from ..services import email_service
 import threading
+import logging # <-- NEW IMPORT
+
+logger = logging.getLogger(__name__) # <-- NEW LOGGER INSTANCE
 
 query = QueryType()
 mutation = MutationType()
@@ -37,7 +40,8 @@ def _handle_hired_status_side_effects(job_id, hired_user_id):
             if candidate:
                 email_service.send_rejection_notification(
                     to_email=candidate["email"], candidate_name=candidate["firstName"],
-                    job_title=job["title"], company=job["company"]
+                    job_title=job["title"], company=job["company"],
+                    app_id=app["appId"] # Correctly passes app_id
                 )
                 # OPTIONAL: Mark them as Rejected so they don't get processed again
                 application_repo.update_one_application({"appId": app["appId"]}, {"status": "Rejected"})
@@ -45,9 +49,7 @@ def _handle_hired_status_side_effects(job_id, hired_user_id):
     print("Hired status side-effects complete. Job is Closed, mass rejections sent.")
 
 # --- FIELD RESOLVERS ---
-
-@job.field("applicants")
-@job.field("applicants")
+@job.field("applicants") 
 def resolve_job_applicants(job_obj, info):
     job_id = job_obj.get("jobId")
     if not job_id: return []
@@ -175,7 +177,9 @@ def resolve_update_application(obj, info, appId, input):
 def resolve_update_application_status_by_names(obj, info, userName, jobTitle, newStatus, companyName=None):
     # --- AUTHORIZATION ---
     user_role = info.context.get("user_role")
-    if user_role != "Recruiter": raise ValueError("Permission denied: You must be a Recruiter to update an application.")
+    if user_role != "Recruiter": 
+        logger.warning(f"Permission denied: Non-Recruiter attempted status update for {userName}")
+        raise ValueError("Permission denied: You must be a Recruiter to update an application.")
     
     # --- FIND THE SINGLE TARGET APPLICATION ---
     application_filter = {"userName": userName, "jobTitle": jobTitle}
@@ -183,31 +187,50 @@ def resolve_update_application_status_by_names(obj, info, userName, jobTitle, ne
     
     apps = application_repo.find_applications(application_filter)
     if not apps: 
+        logger.warning(f"Application not found for {userName} at {jobTitle} ({companyName or 'any'}).")
         raise ValueError(f"No application found for '{userName}' at job '{jobTitle}' at company '{companyName or ''}'.")
     if len(apps) > 1: 
+        logger.warning(f"Ambiguous application update for {userName} at {jobTitle}. Matches: {len(apps)}")
         raise ValueError("Found multiple matching applications. Please be more specific.")
     
     target_app_id = apps[0]["appId"]
-    # --- END FIND LOGIC ---
+    logger.debug(f"DEBUG_A: Found application {target_app_id}. Status being set to '{newStatus}'")
 
     # --- UPDATE STATUS ---
     updated_app = application_repo.update_one_application({"appId": target_app_id}, {"status": newStatus})
-    if not updated_app: raise ValueError("Failed to update application status.")
+    if not updated_app: 
+        logger.error(f"Failed to update application {target_app_id} status to {newStatus}.")
+        raise ValueError("Failed to update application status.")
+
+    logger.debug("DEBUG_B: Status successfully updated in DB.")
 
     # --- TRIGGER SIDE-EFFECTS (Email, Job Closure) ---
     candidate = user_repo.find_one_by_id(updated_app["userId"])
     job = job_repo.find_job_by_id(updated_app["jobId"])
 
-    if newStatus == "Interviewing" and candidate and job:
+    if newStatus.lower() == "interview" and candidate and job:
+        # CRITICAL: We remove the try/except blocks around this call 
+        # (if any were there) and let the exception propagate.
+        logger.debug("DEBUG_C: Initiating send_interview_invitation.")
         email_service.send_interview_invitation(
             to_email=candidate["email"], candidate_name=candidate["firstName"],
-            job_title=job["title"], company=job["company"]
+            job_title=job["title"], company=job["company"],
+            app_id=updated_app["appId"] 
         )
     
-    if newStatus == "Hired" and candidate and job:
+    if newStatus.lower() == "hire" and candidate and job:
+        # Send confirmation/offer email to the hired candidate and audit success
+        offer_subject = f"Job Offer for {job['title']} at {job['company']}"
+        offer_body = f"<p>Congratulations {candidate['firstName']}, we are delighted to offer you the position!</p><p>Details will follow shortly.</p>"
+        
+        # We call the internal helper directly to send the email and audit
+        if email_service._send_email(candidate["email"], offer_subject, offer_body): 
+            email_service._audit_email_success(updated_app["appId"], "Hired")
+
+        logger.debug("DEBUG_D: Starting background thread for mass rejection.")
         thread = threading.Thread(target=_handle_hired_status_side_effects, args=(job["jobId"], candidate["UserID"]))
         thread.start()
-
+    logger.debug(f"DEBUG_D: Final resolver output for App {target_app_id}.")
     return to_application_output(updated_app)
 
 @mutation.field("addNoteToApplicationByJob")

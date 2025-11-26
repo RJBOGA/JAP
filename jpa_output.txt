@@ -2265,116 +2265,6 @@ if __name__ == "__main__":
         print("   Run: python src/backend/app.py")
 </file>
 
-<file path="src/backend/db.py">
-# db.py
-import os
-from datetime import datetime
-from dotenv import load_dotenv
-from pymongo import MongoClient, ReturnDocument
-
-# ... (no changes to MONGO_URI, DB_NAME, _client, _db, get_db)
-load_dotenv(os.path.join(os.path.dirname(__file__), '../../config/.env'))
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-DB_NAME = os.getenv("DB_NAME", "jobtracker")
-_client = MongoClient(MONGO_URI)
-_db = _client[DB_NAME]
-def get_db():
-    return _db
-
-
-# --- Collection Helpers ---
-def users_collection():
-    return _db["users"]
-
-def jobs_collection():
-    return _db["jobs"]
-
-def applications_collection(): # New
-    return _db["applications"]
-
-def counters_collection():
-    return _db["counters"]
-
-
-# --- Counters (User, Job, and new Application counter) ---
-def _ensure_counter(counter_id: str):
-    counters_collection().update_one(
-        {"_id": counter_id},
-        {"$setOnInsert": {"sequence_value": 0}},
-        upsert=True,
-    )
-
-def _next_id(counter_id: str):
-    result = counters_collection().find_one_and_update(
-        {"_id": counter_id},
-        {"$inc": {"sequence_value": 1}},
-        return_document=ReturnDocument.AFTER,
-        upsert=True,
-    )
-    return int(result["sequence_value"])
-
-def ensure_user_counter():
-    _ensure_counter("UserID")
-
-def next_user_id():
-    return _next_id("UserID")
-
-def ensure_job_counter():
-    _ensure_counter("jobId")
-
-def next_job_id():
-    return _next_id("jobId")
-
-def ensure_application_counter(): # New
-    _ensure_counter("appId")
-
-def next_application_id(): # New
-    return _next_id("appId")
-
-
-# --- Output Formatting (no changes to user/job, new for application) ---
-def to_user_output(doc: dict): # ... no changes
-    if not doc:
-        return None
-    return {
-        "UserID": int(doc.get("UserID")) if doc.get("UserID") is not None else None,
-        "FirstName": doc.get("FirstName"),
-        "LastName": doc.get("LastName"),
-        "DateOfBirth": doc.get("DateOfBirth"),
-        "ProfessionalTitle": doc.get("ProfessionalTitle"),
-        "Summary": doc.get("Summary"),
-    }
-
-def to_job_output(doc: dict): # ... no changes
-    if not doc:
-        return None
-    return {
-        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
-        "title": doc.get("title"),
-        "company": doc.get("company"),
-        "location": doc.get("location"),
-        "salaryRange": doc.get("salaryRange"),
-        "skillsRequired": doc.get("skillsRequired"),
-        "description": doc.get("description"),
-        "postedAt": doc.get("postedAt"),
-    }
-
-def to_application_output(doc: dict): # New
-    if not doc:
-        return None
-    return {
-        "appId": int(doc.get("appId")) if doc.get("appId") is not None else None,
-        "userId": int(doc.get("userId")) if doc.get("userId") is not None else None,
-        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
-        "status": doc.get("status"),
-        "submittedAt": doc.get("submittedAt"),
-        "notes": doc.get("notes"),
-        "userName": doc.get("userName"),
-        "jobTitle": doc.get("jobTitle"),
-        "companyName": doc.get("companyName"),
-    }
-</file>
-
 <file path="src/backend/errors.py">
 from flask import jsonify
 from werkzeug.exceptions import HTTPException
@@ -2442,69 +2332,6 @@ class UserProfileType(Enum):
             
 def get_user_profile_types():
     return [e.value for e in UserProfileType]
-</file>
-
-<file path="src/backend/services/email_service.py">
-# src/backend/services/email_service.py
-import os
-import resend
-from typing import List
-
-resend.api_key = os.getenv("RESEND_API_KEY")
-SENDER_EMAIL = "onboarding@resend.dev" # Default provided by Resend
-
-# Replace this with your own verified sending domain email
-# For the free tier, you can only send from the email you signed up with.
-SENDER_EMAIL = "onboarding@resend.dev"  # Default provided by Resend
-
-def send_interview_invitation(to_email: str, candidate_name: str, job_title: str, company: str):
-    """Sends an interview invitation email."""
-    if not resend.api_key:
-        print("WARNING: RESEND_API_KEY not set. Skipping email.")
-        return
-
-    subject = f"Interview Invitation for the {job_title} position at {company}"
-    html_body = f"""
-    <p>Hi {candidate_name},</p>
-    <p>Congratulations! We would like to invite you for an interview for the <strong>{job_title}</strong> role at <strong>{company}</strong>.</p>
-    <p>Our hiring team will be in touch shortly to coordinate a time that works for you.</p>
-    <p>Best regards,<br/>The Hiring Team at {company}</p>
-    """
-    try:
-        resend.Emails.send({
-            "from": SENDER_EMAIL,
-            "to": [to_email],
-            "subject": subject,
-            "html": html_body,
-        })
-        print(f"Interview invitation sent to {to_email}")
-    except Exception as e:
-        print(f"ERROR: Failed to send interview invitation to {to_email}. Error: {e}")
-
-def send_rejection_notification(to_email: str, candidate_name: str, job_title: str, company: str):
-    """Sends a rejection email to unsuccessful applicants."""
-    if not resend.api_key:
-        print("WARNING: RESEND_API_KEY not set. Skipping email.")
-        return
-        
-    subject = f"Update on your application for {job_title} at {company}"
-    html_body = f"""
-    <p>Hi {candidate_name},</p>
-    <p>Thank you for your interest in the <strong>{job_title}</strong> role at <strong>{company}</strong>.</p>
-    <p>We received a large number of qualified applications, and after careful consideration, we have decided to move forward with other candidates whose experience more closely matches our current needs.</p>
-    <p>We appreciate you taking the time to apply and wish you the best of luck in your job search.</p>
-    <p>Best regards,<br/>The Hiring Team at {company}</p>
-    """
-    try:
-        resend.Emails.send({
-            "from": SENDER_EMAIL,
-            "to": [to_email],
-            "subject": subject,
-            "html": html_body,
-        })
-        print(f"Rejection notification sent to {to_email}")
-    except Exception as e:
-        print(f"ERROR: Failed to send rejection email to {to_email}. Error: {e}")
 </file>
 
 <file path="src/backend/validators/common_validators.py">
@@ -4264,28 +4091,114 @@ This project is maintained by RJBOGA
 Licensed under the MIT License
 </file>
 
-<file path="src/.env">
-MONGO_URI=mongodb://localhost:27017/
-DB_NAME=jobtracker
+<file path="src/backend/db.py">
+# db.py
+import os
+from datetime import datetime
+from dotenv import load_dotenv
+from pymongo import MongoClient, ReturnDocument
 
-# Alternative: If using Ollama cloud service, uncomment and configure:
-OLLAMA_HOST=https://ollama.com
-OLLAMA_MODEL=gpt-oss:120b-cloud  
-OLLAMA_API_KEY=2a5870ffa8ab469b879ab02999b684db.28nZHl4ZWnBXzrvzWFpiJ7DT
+# ... (no changes to MONGO_URI, DB_NAME, _client, _db, get_db)
+load_dotenv(os.path.join(os.path.dirname(__file__), '../../config/.env'))
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+DB_NAME = os.getenv("DB_NAME", "jobtracker")
+_client = MongoClient(MONGO_URI)
+_db = _client[DB_NAME]
+def get_db():
+    return _db
 
-RESEND_API_KEY=re_YOUR_ACTUAL_RESEND_API_KEY_HERE
-</file>
 
-<file path="src/backend/.env">
-MONGO_URI=mongodb://localhost:27017/
-DB_NAME=jobtracker
+# --- Collection Helpers ---
+def users_collection():
+    return _db["users"]
 
-# Alternative: If using Ollama cloud service, uncomment and configure:
-OLLAMA_HOST=https://ollama.com
-OLLAMA_MODEL=gpt-oss:120b-cloud  
-OLLAMA_API_KEY=2a5870ffa8ab469b879ab02999b684db.28nZHl4ZWnBXzrvzWFpiJ7DT
+def jobs_collection():
+    return _db["jobs"]
 
-RESEND_API_KEY=re_PAfdoM9e_FQu3ZGn7hKWJ2U6iaG7BiuNf
+def applications_collection(): # New
+    return _db["applications"]
+
+def counters_collection():
+    return _db["counters"]
+
+
+# --- Counters (User, Job, and new Application counter) ---
+def _ensure_counter(counter_id: str):
+    counters_collection().update_one(
+        {"_id": counter_id},
+        {"$setOnInsert": {"sequence_value": 0}},
+        upsert=True,
+    )
+
+def _next_id(counter_id: str):
+    result = counters_collection().find_one_and_update(
+        {"_id": counter_id},
+        {"$inc": {"sequence_value": 1}},
+        return_document=ReturnDocument.AFTER,
+        upsert=True,
+    )
+    return int(result["sequence_value"])
+
+def ensure_user_counter():
+    _ensure_counter("UserID")
+
+def next_user_id():
+    return _next_id("UserID")
+
+def ensure_job_counter():
+    _ensure_counter("jobId")
+
+def next_job_id():
+    return _next_id("jobId")
+
+def ensure_application_counter(): # New
+    _ensure_counter("appId")
+
+def next_application_id(): # New
+    return _next_id("appId")
+
+
+# --- Output Formatting (no changes to user/job, new for application) ---
+def to_user_output(doc: dict): # ... no changes
+    if not doc:
+        return None
+    return {
+        "UserID": int(doc.get("UserID")) if doc.get("UserID") is not None else None,
+        "FirstName": doc.get("FirstName"),
+        "LastName": doc.get("LastName"),
+        "DateOfBirth": doc.get("DateOfBirth"),
+        "ProfessionalTitle": doc.get("ProfessionalTitle"),
+        "Summary": doc.get("Summary"),
+    }
+
+def to_job_output(doc: dict): # ... no changes
+    if not doc:
+        return None
+    return {
+        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
+        "title": doc.get("title"),
+        "company": doc.get("company"),
+        "location": doc.get("location"),
+        "salaryRange": doc.get("salaryRange"),
+        "skillsRequired": doc.get("skillsRequired"),
+        "description": doc.get("description"),
+        "postedAt": doc.get("postedAt"),
+    }
+
+def to_application_output(doc: dict): # New
+    if not doc:
+        return None
+    return {
+        "appId": int(doc.get("appId")) if doc.get("appId") is not None else None,
+        "userId": int(doc.get("userId")) if doc.get("userId") is not None else None,
+        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
+        "status": doc.get("status"),
+        "submittedAt": doc.get("submittedAt"),
+        "notes": doc.get("notes"),
+        "userName": doc.get("userName"),
+        "jobTitle": doc.get("jobTitle"),
+        "companyName": doc.get("companyName"),
+    }
 </file>
 
 <file path="src/backend/repository/application_repo.py">
@@ -4317,6 +4230,74 @@ def update_one_application(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Opt
 def count_applications(query: Dict[str, Any]) -> int:
     """Counts the number of documents in the applications collection matching a query."""
     return applications_collection().count_documents(query)
+</file>
+
+<file path="src/backend/services/email_service.py">
+# src/backend/services/email_service.py
+import os
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from dotenv import load_dotenv
+
+# --- Load Env Vars (Ensure visibility) ---
+load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
+load_dotenv(os.path.join(os.path.dirname(__file__), '../../.env'))
+
+# --- Configuration ---
+SMTP_HOST = os.getenv("EMAIL_HOST")
+SMTP_PORT = int(os.getenv("EMAIL_PORT", 587))
+SMTP_USERNAME = os.getenv("EMAIL_USERNAME")
+SMTP_PASSWORD = os.getenv("EMAIL_PASSWORD")
+SENDER_EMAIL = SMTP_USERNAME # The sender must be the authenticated account
+
+def _send_email(to_email: str, subject: str, html_body: str):
+    """Internal helper to connect to SMTP and send the email."""
+    if not all([SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD]):
+        print("WARNING: SMTP credentials not fully configured. Skipping email.")
+        return
+
+    message = MIMEText(html_body, 'html')
+    message['Subject'] = subject
+    message['From'] = SENDER_EMAIL
+    message['To'] = to_email
+
+    context = ssl.create_default_context()
+    
+    try:
+        # Use starttls for port 587
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls(context=context)
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SENDER_EMAIL, to_email, message.as_string())
+        
+        print(f"SMTP Success: Email sent to {to_email}")
+        
+    except Exception as e:
+        print(f"SMTP ERROR: Failed to send email to {to_email}. Error: {type(e).__name__}: {e}")
+
+def send_interview_invitation(to_email: str, candidate_name: str, job_title: str, company: str):
+    """Sends an interview invitation email."""
+    subject = f"Interview Invitation for the {job_title} position at {company}"
+    html_body = f"""
+    <p>Hi {candidate_name},</p>
+    <p>Congratulations! We would like to invite you for an interview for the <strong>{job_title}</strong> role at <strong>{company}</strong>.</p>
+    <p>Our hiring team will be in touch shortly to coordinate a time that works for you.</p>
+    <p>Best regards,<br/>The Hiring Team at {company}</p>
+    """
+    _send_email(to_email, subject, html_body)
+
+def send_rejection_notification(to_email: str, candidate_name: str, job_title: str, company: str):
+    """Sends a rejection email to unsuccessful applicants."""
+    subject = f"Update on your application for {job_title} at {company}"
+    html_body = f"""
+    <p>Hi {candidate_name},</p>
+    <p>Thank you for your interest in the <strong>{job_title}</strong> role at <strong>{company}</strong>.</p>
+    <p>We received a large number of qualified applications, and after careful consideration, we have decided to move forward with other candidates whose experience more closely matches our current needs.</p>
+    <p>We appreciate you taking the time to apply and wish you the best of luck in your job search.</p>
+    <p>Best regards,<br/>The Hiring Team at {company}</p>
+    """
+    _send_email(to_email, subject, html_body)
 </file>
 
 <file path="src/frontend-react/.env.development">
@@ -4394,6 +4375,44 @@ root.render(
 
 // Note: A real setup would also need an HTML file (index.html) 
 // and potentially CSS, but 'react-scripts start' handles index.html creation.
+</file>
+
+<file path="src/.env">
+MONGO_URI=mongodb://localhost:27017/
+DB_NAME=jobtracker
+
+# Alternative: If using Ollama cloud service, uncomment and configure:
+OLLAMA_HOST=https://ollama.com
+OLLAMA_MODEL=gpt-oss:120b-cloud  
+OLLAMA_API_KEY=2a5870ffa8ab469b879ab02999b684db.28nZHl4ZWnBXzrvzWFpiJ7DT
+
+RESEND_API_KEY=re_PAfdoM9e_FQu3ZGn7hKWJ2U6iaG7BiuNf
+
+# Email Configuration
+spring.mail.host=smtp.gmail.com
+spring.mail.port=587
+spring.mail.username=raju.boga18@gmail.com
+spring.mail.password=wmmmrqzbjxjapjeo
+spring.mail.properties.mail.smtp.auth=true
+spring.mail.properties.mail.smtp.starttls.enable=true
+</file>
+
+<file path="src/backend/.env">
+MONGO_URI=mongodb://localhost:27017/
+DB_NAME=jobtracker
+
+# Alternative: If using Ollama cloud service, uncomment and configure:
+OLLAMA_HOST=https://ollama.com
+OLLAMA_MODEL=gpt-oss:120b-cloud  
+OLLAMA_API_KEY=2a5870ffa8ab469b879ab02999b684db.28nZHl4ZWnBXzrvzWFpiJ7DT
+
+RESEND_API_KEY=re_PAfdoM9e_FQu3ZGn7hKWJ2U6iaG7BiuNf
+
+# --- NEW: GMAIL/SMTP EMAIL CONFIGURATION ---
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USERNAME=raju.boga18@gmail.com
+EMAIL_PASSWORD=wmmmrqzbjxjapjeo
 </file>
 
 <file path="src/backend/services/resume_parser_service.py">
@@ -5084,6 +5103,65 @@ function LoginPage() {
 export default LoginPage;
 </file>
 
+<file path="src/backend/repository/job_repo.py">
+# src/backend/repository/job_repo.py
+import re
+from typing import Optional, Dict, Any, List
+from pymongo import ReturnDocument
+from ..db import jobs_collection
+
+def to_job_output(doc: dict) -> dict:
+    if not doc: return None
+    return {
+        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
+        "title": doc.get("title"), "company": doc.get("company"), "location": doc.get("location"),
+        "salaryRange": doc.get("salaryRange"), "skillsRequired": doc.get("skillsRequired"),
+        "description": doc.get("description"), "postedAt": doc.get("postedAt"),
+        "requires_us_citizenship": doc.get("requires_us_citizenship"),
+        "minimum_degree_year": doc.get("minimum_degree_year"),
+        "status": doc.get("status"),
+        "posterUserId": doc.get("posterUserId"),
+        "posterName": doc.get("posterName"),
+    }
+
+def build_job_filter(company: Optional[str], location: Optional[str], title: Optional[str], poster_user_id: Optional[int] = None) -> Dict[str, Any]:
+    q: Dict[str, Any] = {}
+    if company: q["company"] = {"$regex": f"^{re.escape(company)}$", "$options": "i"}
+    if location: q["location"] = {"$regex": f"^{re.escape(location)}$", "$options": "i"}
+    if title: q["title"] = {"$regex": f".*{re.escape(title)}.*", "$options": "i"}
+    if poster_user_id is not None: q["posterUserId"] = int(poster_user_id)
+    return q
+
+def find_jobs(q: Dict[str, Any], skip: Optional[int], limit: Optional[int]) -> List[dict]:
+    cursor = jobs_collection().find(q, {"_id": 0})
+    if skip is not None: cursor = cursor.skip(int(skip))
+    if limit is not None: cursor = cursor.limit(int(limit))
+    return list(cursor)
+
+def find_job_by_id(job_id: int) -> Optional[dict]:
+    return jobs_collection().find_one({"jobId": int(job_id)}, {"_id": 0})
+
+def insert_job(doc: dict) -> None:
+    jobs_collection().insert_one(doc)
+
+def update_one_job(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Optional[dict]:
+    return jobs_collection().find_one_and_update(
+        q, {"$set": set_fields}, projection={"_id": 0}, return_document=ReturnDocument.AFTER
+    )
+
+def delete_one_job(q: Dict[str, Any]) -> int:
+    res = jobs_collection().delete_one(q)
+    return int(res.deleted_count)
+
+def add_skills_to_job(job_id: int, skills: List[str]) -> Optional[dict]:
+    return jobs_collection().find_one_and_update(
+        {"jobId": int(job_id)},
+        {"$addToSet": {"skillsRequired": {"$each": skills}}},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+</file>
+
 <file path="src/frontend-react/src/ResultsDisplay.css">
 /* src/frontend-react/src/ResultsDisplay.css */
 .results-display {
@@ -5283,65 +5361,6 @@ export default LoginPage;
 }
 </file>
 
-<file path="src/backend/repository/job_repo.py">
-# src/backend/repository/job_repo.py
-import re
-from typing import Optional, Dict, Any, List
-from pymongo import ReturnDocument
-from ..db import jobs_collection
-
-def to_job_output(doc: dict) -> dict:
-    if not doc: return None
-    return {
-        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
-        "title": doc.get("title"), "company": doc.get("company"), "location": doc.get("location"),
-        "salaryRange": doc.get("salaryRange"), "skillsRequired": doc.get("skillsRequired"),
-        "description": doc.get("description"), "postedAt": doc.get("postedAt"),
-        "requires_us_citizenship": doc.get("requires_us_citizenship"),
-        "minimum_degree_year": doc.get("minimum_degree_year"),
-        "status": doc.get("status"),
-        "posterUserId": doc.get("posterUserId"),
-        "posterName": doc.get("posterName"),
-    }
-
-def build_job_filter(company: Optional[str], location: Optional[str], title: Optional[str], poster_user_id: Optional[int] = None) -> Dict[str, Any]:
-    q: Dict[str, Any] = {}
-    if company: q["company"] = {"$regex": f"^{re.escape(company)}$", "$options": "i"}
-    if location: q["location"] = {"$regex": f"^{re.escape(location)}$", "$options": "i"}
-    if title: q["title"] = {"$regex": f".*{re.escape(title)}.*", "$options": "i"}
-    if poster_user_id is not None: q["posterUserId"] = int(poster_user_id)
-    return q
-
-def find_jobs(q: Dict[str, Any], skip: Optional[int], limit: Optional[int]) -> List[dict]:
-    cursor = jobs_collection().find(q, {"_id": 0})
-    if skip is not None: cursor = cursor.skip(int(skip))
-    if limit is not None: cursor = cursor.limit(int(limit))
-    return list(cursor)
-
-def find_job_by_id(job_id: int) -> Optional[dict]:
-    return jobs_collection().find_one({"jobId": int(job_id)}, {"_id": 0})
-
-def insert_job(doc: dict) -> None:
-    jobs_collection().insert_one(doc)
-
-def update_one_job(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Optional[dict]:
-    return jobs_collection().find_one_and_update(
-        q, {"$set": set_fields}, projection={"_id": 0}, return_document=ReturnDocument.AFTER
-    )
-
-def delete_one_job(q: Dict[str, Any]) -> int:
-    res = jobs_collection().delete_one(q)
-    return int(res.deleted_count)
-
-def add_skills_to_job(job_id: int, skills: List[str]) -> Optional[dict]:
-    return jobs_collection().find_one_and_update(
-        {"jobId": int(job_id)},
-        {"$addToSet": {"skillsRequired": {"$each": skills}}},
-        projection={"_id": 0},
-        return_document=ReturnDocument.AFTER,
-    )
-</file>
-
 <file path="src/backend/repository/user_repo.py">
 # src/backend/repository/user_repo.py
 import re
@@ -5395,6 +5414,83 @@ def delete_one(q: Dict[str, Any]) -> int:
 
 def add_skills_to_user(user_id: int, skills: List[str]) -> Optional[dict]:
     return users_collection().find_one_and_update({"UserID": int(user_id)}, {"$addToSet": {"skills": {"$each": skills}}}, projection={"_id": 0, "password": 0}, return_document=ReturnDocument.AFTER)
+</file>
+
+<file path="src/backend/resolvers/user_resolvers.py">
+# src/backend/resolvers/user_resolvers.py
+from ariadne import QueryType, MutationType
+from datetime import datetime
+from ..validators.common_validators import require_non_empty_str, validate_date_str, clean_update_input
+from ..repository import user_repo
+from ..db import next_user_id
+
+query = QueryType()
+mutation = MutationType()
+
+@query.field("users")
+def resolve_users(*_, limit=None, skip=None, firstName=None, lastName=None, dob=None, skills=None, isUSCitizen=None, yearsOfExperience_gte=None):
+    if dob: dob = validate_date_str(dob)
+    q = user_repo.build_filter(firstName, lastName, dob, skills, is_us_citizen=isUSCitizen, years_of_experience_gte=yearsOfExperience_gte)
+    docs = user_repo.find_users(q, skip, limit)
+    return [user_repo.to_user_output(d) for d in docs]
+
+@query.field("userById")
+def resolve_user_by_id(*_, UserID):
+    doc = user_repo.find_one_by_id(int(UserID))
+    return user_repo.to_user_output(doc)
+
+@mutation.field("createUser")
+def resolve_create_user(*_, input):
+    email = require_non_empty_str(input.get("email"), "email")
+    if user_repo.find_user_by_email(email): raise ValueError(f"A user with the email '{email}' already exists.")
+    doc = {"UserID": next_user_id(), "email": email.lower(), "password": None, "firstName": require_non_empty_str(input.get("firstName"), "firstName"), "lastName": require_non_empty_str(input.get("lastName"), "lastName"), "role": require_non_empty_str(input.get("role"), "role"), "createdAt": datetime.utcnow().isoformat(), "phone_number": input.get("phone_number"), "city": input.get("city"), "state_province": input.get("state_province"), "country": input.get("country"), "linkedin_profile": input.get("linkedin_profile"), "portfolio_url": input.get("portfolio_url"), "highest_qualification": input.get("highest_qualification"), "years_of_experience": input.get("years_of_experience"), "dob": validate_date_str(input.get("dob")), "skills": input.get("skills", []), "professionalTitle": input.get("professionalTitle"), "is_us_citizen": input.get("is_us_citizen"), "highest_degree_year": input.get("highest_degree_year")}
+    user_repo.insert_user(doc)
+    return user_repo.to_user_output(doc)
+
+@mutation.field("updateUser")
+def resolve_update_user(*_, UserID, input):
+    if "dob" in input and input.get("dob") is not None: input["dob"] = validate_date_str(input["dob"])
+    set_fields = clean_update_input(input)
+    if not set_fields: raise ValueError("No fields provided to update")
+    updated = user_repo.update_one({"UserID": int(UserID)}, set_fields)
+    if not updated: raise ValueError(f"User with ID {UserID} not found for update.")
+    return user_repo.to_user_output(updated)
+
+@mutation.field("updateUserByName")
+def resolve_update_user_by_name(*_, firstName=None, lastName=None, input=None):
+    q = user_repo.build_filter(firstName, lastName, None)
+    if not q: raise ValueError("Provide firstName and/or lastName to identify the user")
+    matches = user_repo.find_users(q, None, None)
+    if len(matches) == 0: raise ValueError("No user matched the provided name filter")
+    if len(matches) > 1: raise ValueError("Multiple users matched; please be more specific to target a single user")
+    set_fields = clean_update_input(input or {})
+    if not set_fields: raise ValueError("No fields provided to update")
+    updated = user_repo.update_one({"UserID": matches[0]["UserID"]}, set_fields)
+    return user_repo.to_user_output(updated)
+
+@mutation.field("deleteUser")
+def resolve_delete_user(*_, UserID):
+    return user_repo.delete_one({"UserID": int(UserID)}) == 1
+
+@mutation.field("deleteUserByFields")
+def resolve_delete_user_by_fields(*_, firstName=None, lastName=None, dob=None):
+    q = user_repo.build_filter(firstName, lastName, dob)
+    if not q: raise ValueError("Provide at least one filter: firstName, lastName, or dob")
+    matches = user_repo.find_users(q, None, None)
+    if len(matches) == 0: return False
+    if len(matches) > 1: raise ValueError("Multiple users matched; add more filters to target a single user")
+    return user_repo.delete_one(q) == 1
+
+@mutation.field("addSkillsToUser")
+def resolve_add_skills_to_user(obj, info, UserID, skills):
+    logged_in_user = info.context.get("user")
+    user_role = info.context.get("user_role")
+    if not (logged_in_user and logged_in_user.get("UserID") == UserID) and user_role != "Recruiter":
+        raise ValueError("Permission denied: You can only add skills to your own profile.")
+    if not skills: raise ValueError("The 'skills' list cannot be empty.")
+    updated_user = user_repo.add_skills_to_user(UserID, skills)
+    if not updated_user: raise ValueError(f"User with ID {UserID} not found.")
+    return user_repo.to_user_output(updated_user)
 </file>
 
 <file path="src/backend/resolvers/application_resolvers.py">
@@ -5673,83 +5769,6 @@ def resolve_application_by_id(*_, appId):
     return to_application_output(doc)
 </file>
 
-<file path="src/backend/resolvers/user_resolvers.py">
-# src/backend/resolvers/user_resolvers.py
-from ariadne import QueryType, MutationType
-from datetime import datetime
-from ..validators.common_validators import require_non_empty_str, validate_date_str, clean_update_input
-from ..repository import user_repo
-from ..db import next_user_id
-
-query = QueryType()
-mutation = MutationType()
-
-@query.field("users")
-def resolve_users(*_, limit=None, skip=None, firstName=None, lastName=None, dob=None, skills=None, isUSCitizen=None, yearsOfExperience_gte=None):
-    if dob: dob = validate_date_str(dob)
-    q = user_repo.build_filter(firstName, lastName, dob, skills, is_us_citizen=isUSCitizen, years_of_experience_gte=yearsOfExperience_gte)
-    docs = user_repo.find_users(q, skip, limit)
-    return [user_repo.to_user_output(d) for d in docs]
-
-@query.field("userById")
-def resolve_user_by_id(*_, UserID):
-    doc = user_repo.find_one_by_id(int(UserID))
-    return user_repo.to_user_output(doc)
-
-@mutation.field("createUser")
-def resolve_create_user(*_, input):
-    email = require_non_empty_str(input.get("email"), "email")
-    if user_repo.find_user_by_email(email): raise ValueError(f"A user with the email '{email}' already exists.")
-    doc = {"UserID": next_user_id(), "email": email.lower(), "password": None, "firstName": require_non_empty_str(input.get("firstName"), "firstName"), "lastName": require_non_empty_str(input.get("lastName"), "lastName"), "role": require_non_empty_str(input.get("role"), "role"), "createdAt": datetime.utcnow().isoformat(), "phone_number": input.get("phone_number"), "city": input.get("city"), "state_province": input.get("state_province"), "country": input.get("country"), "linkedin_profile": input.get("linkedin_profile"), "portfolio_url": input.get("portfolio_url"), "highest_qualification": input.get("highest_qualification"), "years_of_experience": input.get("years_of_experience"), "dob": validate_date_str(input.get("dob")), "skills": input.get("skills", []), "professionalTitle": input.get("professionalTitle"), "is_us_citizen": input.get("is_us_citizen"), "highest_degree_year": input.get("highest_degree_year")}
-    user_repo.insert_user(doc)
-    return user_repo.to_user_output(doc)
-
-@mutation.field("updateUser")
-def resolve_update_user(*_, UserID, input):
-    if "dob" in input and input.get("dob") is not None: input["dob"] = validate_date_str(input["dob"])
-    set_fields = clean_update_input(input)
-    if not set_fields: raise ValueError("No fields provided to update")
-    updated = user_repo.update_one({"UserID": int(UserID)}, set_fields)
-    if not updated: raise ValueError(f"User with ID {UserID} not found for update.")
-    return user_repo.to_user_output(updated)
-
-@mutation.field("updateUserByName")
-def resolve_update_user_by_name(*_, firstName=None, lastName=None, input=None):
-    q = user_repo.build_filter(firstName, lastName, None)
-    if not q: raise ValueError("Provide firstName and/or lastName to identify the user")
-    matches = user_repo.find_users(q, None, None)
-    if len(matches) == 0: raise ValueError("No user matched the provided name filter")
-    if len(matches) > 1: raise ValueError("Multiple users matched; please be more specific to target a single user")
-    set_fields = clean_update_input(input or {})
-    if not set_fields: raise ValueError("No fields provided to update")
-    updated = user_repo.update_one({"UserID": matches[0]["UserID"]}, set_fields)
-    return user_repo.to_user_output(updated)
-
-@mutation.field("deleteUser")
-def resolve_delete_user(*_, UserID):
-    return user_repo.delete_one({"UserID": int(UserID)}) == 1
-
-@mutation.field("deleteUserByFields")
-def resolve_delete_user_by_fields(*_, firstName=None, lastName=None, dob=None):
-    q = user_repo.build_filter(firstName, lastName, dob)
-    if not q: raise ValueError("Provide at least one filter: firstName, lastName, or dob")
-    matches = user_repo.find_users(q, None, None)
-    if len(matches) == 0: return False
-    if len(matches) > 1: raise ValueError("Multiple users matched; add more filters to target a single user")
-    return user_repo.delete_one(q) == 1
-
-@mutation.field("addSkillsToUser")
-def resolve_add_skills_to_user(obj, info, UserID, skills):
-    logged_in_user = info.context.get("user")
-    user_role = info.context.get("user_role")
-    if not (logged_in_user and logged_in_user.get("UserID") == UserID) and user_role != "Recruiter":
-        raise ValueError("Permission denied: You can only add skills to your own profile.")
-    if not skills: raise ValueError("The 'skills' list cannot be empty.")
-    updated_user = user_repo.add_skills_to_user(UserID, skills)
-    if not updated_user: raise ValueError(f"User with ID {UserID} not found.")
-    return user_repo.to_user_output(updated_user)
-</file>
-
 <file path="src/frontend-react/src/ResultsDisplay.js">
 // src/frontend-react/src/ResultsDisplay.js
 import React, { useState } from 'react';
@@ -5943,197 +5962,6 @@ const StatusBadge = ({ status }) => {
 };
 
 export default ResultsDisplay;
-</file>
-
-<file path="src/backend/services/nl2gql_service.py">
-# src/backend/services/nl2gql_service.py
-import os
-import requests
-import json
-from typing import Optional
-from dotenv import load_dotenv
-
-env_path = os.path.join(os.path.dirname(__file__), '../../.env')
-load_dotenv(dotenv_path=env_path)
-
-from ..errors import json_error, unwrap_graphql_errors
-
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "https://ollama.com")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:120b-cloud")
-OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
-OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
-
-
-# --- RESTORED: The more comprehensive small talk handler ---
-def handle_small_talk(user_text: str):
-    """
-    Checks for a wide range of conversational phrases (greetings, idioms, etc.)
-    and returns a predefined friendly response to bypass the LLM.
-    """
-    clean_text = user_text.lower().strip()
-    words = clean_text.split()
-    
-    # --- Category 1: Direct Matches (Greetings, Gratitude, Interjections) ---
-    small_talk_map = {
-        "hi": "Hello there! How can I assist with your job data today?",
-        "hello": "Hi! I'm ready to convert your requests into GraphQL. What can I do?",
-        "hey": "Hey! Let me know what data you need to query or update.",
-        "greetings": "Greetings! I'm here to help with your job portal data via NL2GQL.",
-        "thanks": "You're welcome! I'm happy to help.",
-        "thank you": "My pleasure! Just ask if you have more queries.",
-        "wow": "Glad to impress! Do you have a query for me?",
-        "cool": "I think so too! Ready for your next command.",
-        "awesome": "I strive for excellence! Ready for a command.",
-        "oops": "Mistakes happen! Please try your query again.",
-        "sorry": "No worries at all. What is your request?",
-        "how are you": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
-        "what's up": "Just monitoring the database for your requests. What can I do for you?",
-        "how are you doing today": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
-    }
-    
-    # --- Category 2: Idioms, Common Phrases & Discourse Markers (Keyword Matching) ---
-    keyword_responses = {
-        "by the way": "Interesting point. Do you have a job or user query for me?",
-        "i mean": "I understand. Please formulate your query clearly.",
-        "just saying": "Got it. I'm waiting for a command that maps to GraphQL.",
-        "you know": "I know what you mean. Focus on what data you need.",
-        "hold on": "Okay, I'll hold. Let me know when you have a request.",
-        "excuse me": "No problem. How can I help with the data?",
-        "can you help me": "Absolutely! I can help by converting your request into a GraphQL query.",
-        "can i ask": "You can ask. I can answer if it involves querying or mutating job portal data.",
-    }
-    
-    default_response_payload = {
-        "graphql": "Small talk handled by service logic", 
-        "result": {
-            "response": (
-                "Hello! I'm your GraphQL assistant. I can help with job portal data. "
-                "Try asking me to:\n- **Find** jobs: *find jobs for Java developer in London*\n"
-                "- **Update** your profile: *update my professional title to Senior Developer*"
-            )
-        }
-    }
-    
-    # 1. Check for Direct Matches
-    if clean_text in small_talk_map:
-        return {"graphql": "Small talk handled by service logic", "result": {"response": small_talk_map[clean_text]}}, 200
-        
-    # 2. Check for Keyword Matches
-    for key, response in keyword_responses.items():
-        if key in clean_text:
-            return {"graphql": "Small talk handled by service logic", "result": {"response": response}}, 200
-
-    # 3. Check for short multi-word greetings or questions to the bot
-    if words:
-        is_greeting = words[0] in ["hi", "hello", "hey"]
-        is_vocative = "assistant" in words or "bot" in words or "jobchat" in words
-        
-        if (is_greeting or is_vocative) and len(words) <= 5:
-            # Return the default, guiding response for these cases
-            return default_response_payload, 200
-        
-    return None
-
-# --- UPDATED Prompt Builder (Keeps the userContext logic) ---
-def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[dict]) -> str:
-    context_str = ""
-    if user_context and user_context.get("UserID"):
-        user_id = user_context["UserID"]
-        first_name = user_context.get("firstName", "the user")
-        context_str = (
-            f"\n\nContext:\n"
-            f"- The request is from a logged-in user named '{first_name}' with UserID: {user_id}.\n"
-            f"- When the user refers to 'me', 'my', or 'I', you MUST use their UserID ({user_id}) to target the operation (e.g., in an `updateUser` mutation).\n"
-        )
-
-    return (
-        "You are an expert GraphQL assistant. Your task is to convert the user's natural language request "
-        "into a single, valid GraphQL operation that adheres strictly to the provided schema. "
-        "Return ONLY the GraphQL operation with no explanations or markdown fences."
-        f"{context_str}"
-        "\n\nKey Instructions:\n"
-        "- To filter users by experience, use the `yearsOfExperience_gte: Int` argument. For '5 years of experience', use `users(yearsOfExperience_gte: 5)`.\n"
-        "- To filter users by citizenship, use the `isUSCitizen: Boolean` argument. For 'who are US citizens', use `users(isUSCitizen: true)`.\n"
-        "- When a user wants to **ADD** skills to **their own profile**, you **MUST** use the `addSkillsToUser` mutation. For all other user profile updates, use `updateUser`.\n"
-        "- When a user asks about **'my applications'**, you **MUST** use the `applications` query and filter it using the `userId` from the context.\n"
-        "- When a user wants to **'add a note'** to their application, you **MUST** use the `addNoteToApplicationByJob` mutation.\n"
-        "- When a user asks **'how many applications'** or for a **'count of applicants'**, you **MUST** query the relevant job and include the `applicationCount` field.\n"
-        "- When a user wants to **UPDATE the STATUS** of an application (e.g., 'interview', 'reject', 'hire'), you **MUST** use the `updateApplicationStatusByNames` mutation. **For this mutation, you MUST extract the candidate's full name, the exact job title, and the company name.**\n" # <--- UPDATED INSTRUCTION
-        "- When a user wants to see **applicants**, **candidates**, or people who **applied** for a job, you **MUST** query the `jobs` field with a filter and request the nested `applicants` field within it.\n"
-        "- When a user wants to **ADD** skills to a job, you **MUST** use the `addSkillsToJob` mutation. For all other job updates, use the `updateJob` mutation.\n"
-        "- When a user wants to **UPDATE** a job by its title and company (e.g., 'update the Senior Python Developer job at Google'), you **MUST** use the `updateJobByFields` mutation with the title and company as identifiers.\n"
-        "- To set a **citizenship requirement** for a job, use `updateJobByFields(..., input: {requires_us_citizenship: true})` or `updateJob(..., input: {requires_us_citizenship: true})`.\n"
-        "- To set a **minimum degree year** for a job, use `updateJobByFields(..., input: {minimum_degree_year: 2015})` or `updateJob(..., input: {minimum_degree_year: 2015})`.\n"
-        "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation.\n"
-        "- When a user wants to **DELETE** or **REMOVE** a job using its title and company, you **MUST** use the `deleteJobByFields` mutation.\n"
-        "- For other actions, use the appropriate query or mutation.\n"
-        "- If the user's request cannot be mapped to any field in the schema, return the single word: INVALID.\n"
-        "- Do not make up fields or assume logic not present in the schema.\n\n"
-        "Schema:\n"
-        f"{schema_sdl}\n\n"
-        "User request:\n"
-        f"\"{user_text}\""
-    )
-
-def extract_graphql(text: str) -> str:
-    """Extracts a GraphQL query from a markdown block or plain text."""
-    if "```" in text:
-        parts = text.split("```")
-        for part in parts:
-            if "query" in part or "mutation" in part or "{" in part:
-                return part.replace("graphql", "").strip()
-    return text.strip()
-
-# --- UPDATED Service Processor (Keeps the userContext logic) ---
-def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, graphql_executor_fn, user_context: Optional[dict]):
-    small_talk_response = handle_small_talk(user_text)
-    if small_talk_response:
-        return small_talk_response
-    
-    if not OLLAMA_API_KEY:
-        return json_error("NL2GQL Service Error: OLLAMA_API_KEY is missing in environment configuration.", 500)
-        
-    prompt = build_nl2gql_prompt(user_text, schema_sdl, user_context)
-
-    headers = {"Authorization": f"Bearer {OLLAMA_API_KEY}"}
-
-    try:
-        resp = requests.post(
-            OLLAMA_GENERATE_URL,
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            headers=headers,
-            timeout=90,
-        )
-    except requests.exceptions.RequestException as e:
-        return json_error(f"Ollama network error: {e}", 502)
-
-    if not resp.ok:
-        try:
-            err_details = resp.json().get("error", resp.text)
-            return json_error(f"LLM Error {resp.status_code}: {err_details}", 502)
-        except (json.JSONDecodeError, ValueError):
-            return json_error(f"Ollama returned a non-JSON error (Status: {resp.status_code}).", 502)
-
-    try:
-        gen_body = resp.json()
-        gen = gen_body.get("response", "")
-        gql = extract_graphql(gen)
-    except (ValueError, IndexError):
-        return json_error("Failed to parse the response from the LLM.", 502)
-
-    if not gql or gql.strip().upper() == "INVALID":
-        return json_error("Your request could not be mapped to a valid operation. Please try rephrasing.", 400)
-
-    if not run_graphql:
-        return {"graphql": gql}, 200
-
-    success, result = graphql_executor_fn({"query": gql})
-    
-    wrapped_error = unwrap_graphql_errors(result)
-    if wrapped_error:
-        return wrapped_error 
-
-    return {"graphql": gql, "result": result}, (200 if success else 400)
 </file>
 
 <file path="src/backend/app.py">
@@ -6381,6 +6209,381 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
 </file>
 
+<file path="src/backend/services/nl2gql_service.py">
+# src/backend/services/nl2gql_service.py
+import os
+import requests
+import json
+from typing import Optional
+from dotenv import load_dotenv
+
+env_path = os.path.join(os.path.dirname(__file__), '../../.env')
+load_dotenv(dotenv_path=env_path)
+
+from ..errors import json_error, unwrap_graphql_errors
+
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "https://ollama.com")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:120b-cloud")
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
+OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
+
+
+# --- RESTORED: The more comprehensive small talk handler ---
+def handle_small_talk(user_text: str):
+    """
+    Checks for a wide range of conversational phrases (greetings, idioms, etc.)
+    and returns a predefined friendly response to bypass the LLM.
+    """
+    clean_text = user_text.lower().strip()
+    words = clean_text.split()
+    
+    # --- Category 1: Direct Matches (Greetings, Gratitude, Interjections) ---
+    small_talk_map = {
+        "hi": "Hello there! How can I assist with your job data today?",
+        "hello": "Hi! I'm ready to convert your requests into GraphQL. What can I do?",
+        "hey": "Hey! Let me know what data you need to query or update.",
+        "greetings": "Greetings! I'm here to help with your job portal data via NL2GQL.",
+        "thanks": "You're welcome! I'm happy to help.",
+        "thank you": "My pleasure! Just ask if you have more queries.",
+        "wow": "Glad to impress! Do you have a query for me?",
+        "cool": "I think so too! Ready for your next command.",
+        "awesome": "I strive for excellence! Ready for a command.",
+        "oops": "Mistakes happen! Please try your query again.",
+        "sorry": "No worries at all. What is your request?",
+        "how are you": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
+        "what's up": "Just monitoring the database for your requests. What can I do for you?",
+        "how are you doing today": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
+    }
+    
+    # --- Category 2: Idioms, Common Phrases & Discourse Markers (Keyword Matching) ---
+    keyword_responses = {
+        "by the way": "Interesting point. Do you have a job or user query for me?",
+        "i mean": "I understand. Please formulate your query clearly.",
+        "just saying": "Got it. I'm waiting for a command that maps to GraphQL.",
+        "you know": "I know what you mean. Focus on what data you need.",
+        "hold on": "Okay, I'll hold. Let me know when you have a request.",
+        "excuse me": "No problem. How can I help with the data?",
+        "can you help me": "Absolutely! I can help by converting your request into a GraphQL query.",
+        "can i ask": "You can ask. I can answer if it involves querying or mutating job portal data.",
+    }
+    
+    default_response_payload = {
+        "graphql": "Small talk handled by service logic", 
+        "result": {
+            "response": (
+                "Hello! I'm your GraphQL assistant. I can help with job portal data. "
+                "Try asking me to:\n- **Find** jobs: *find jobs for Java developer in London*\n"
+                "- **Update** your profile: *update my professional title to Senior Developer*"
+            )
+        }
+    }
+    
+    # 1. Check for Direct Matches
+    if clean_text in small_talk_map:
+        return {"graphql": "Small talk handled by service logic", "result": {"response": small_talk_map[clean_text]}}, 200
+        
+    # 2. Check for Keyword Matches
+    for key, response in keyword_responses.items():
+        if key in clean_text:
+            return {"graphql": "Small talk handled by service logic", "result": {"response": response}}, 200
+
+    # 3. Check for short multi-word greetings or questions to the bot
+    if words:
+        is_greeting = words[0] in ["hi", "hello", "hey"]
+        is_vocative = "assistant" in words or "bot" in words or "jobchat" in words
+        
+        if (is_greeting or is_vocative) and len(words) <= 5:
+            # Return the default, guiding response for these cases
+            return default_response_payload, 200
+        
+    return None
+
+# --- UPDATED Prompt Builder (Keeps the userContext logic) ---
+def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[dict]) -> str:
+    context_str = ""
+    if user_context and user_context.get("UserID"):
+        user_id = user_context["UserID"]
+        first_name = user_context.get("firstName", "the user")
+        context_str = (
+            f"\n\nContext:\n"
+            f"- The request is from a logged-in user named '{first_name}' with UserID: {user_id}.\n"
+            f"- When the user refers to 'me', 'my', or 'I', you MUST use their UserID ({user_id}) to target the operation (e.g., in an `updateUser` mutation).\n"
+        )
+
+    return (
+        "You are an expert GraphQL assistant. Your task is to convert the user's natural language request "
+        "into a single, valid GraphQL operation that adheres strictly to the provided schema. "
+        "Return ONLY the GraphQL operation with no explanations or markdown fences."
+        f"{context_str}"
+        "\n\nKey Instructions:\n"
+        "- To filter users by experience, use the `yearsOfExperience_gte: Int` argument. For '5 years of experience', use `users(yearsOfExperience_gte: 5)`.\n"
+        "- To filter users by citizenship, use the `isUSCitizen: Boolean` argument. For 'who are US citizens', use `users(isUSCitizen: true)`.\n"
+        "- When a user wants to **ADD** skills to **their own profile**, you **MUST** use the `addSkillsToUser` mutation. For all other user profile updates, use `updateUser`.\n"
+        "- When a user asks about **'my applications'**, you **MUST** use the `applications` query and filter it using the `userId` from the context.\n"
+        "- When a user wants to **'add a note'** to their application, you **MUST** use the `addNoteToApplicationByJob` mutation.\n"
+        "- When a user asks **'how many applications'** or for a **'count of applicants'**, you **MUST** query the relevant job and include the `applicationCount` field.\n"
+        "- When a user wants to **UPDATE the STATUS** of an application (e.g., 'interview', 'reject', 'hire'), you **MUST** use the `updateApplicationStatusByNames` mutation. **For this mutation, you MUST extract the candidate's full name, the exact job title, and the company name.**\n" # <--- UPDATED INSTRUCTION
+        "- When a user wants to see **applicants**, **candidates**, or people who **applied** for a job, you **MUST** query the `jobs` field with a filter and request the nested `applicants` field within it.\n"
+        "- When a user wants to **ADD** skills to a job, you **MUST** use the `addSkillsToJob` mutation. For all other job updates, use the `updateJob` mutation.\n"
+        "- When a user wants to **UPDATE** a job by its title and company (e.g., 'update the Senior Python Developer job at Google'), you **MUST** use the `updateJobByFields` mutation with the title and company as identifiers.\n"
+        "- To set a **citizenship requirement** for a job, use `updateJobByFields(..., input: {requires_us_citizenship: true})` or `updateJob(..., input: {requires_us_citizenship: true})`.\n"
+        "- To set a **minimum degree year** for a job, use `updateJobByFields(..., input: {minimum_degree_year: 2015})` or `updateJob(..., input: {minimum_degree_year: 2015})`.\n"
+        "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation.\n"
+        "- When a user wants to **DELETE** or **REMOVE** a job using its title and company, you **MUST** use the `deleteJobByFields` mutation.\n"
+        "- For other actions, use the appropriate query or mutation.\n"
+        "- If the user's request cannot be mapped to any field in the schema, return the single word: INVALID.\n"
+        "- Do not make up fields or assume logic not present in the schema.\n\n"
+        "Schema:\n"
+        f"{schema_sdl}\n\n"
+        "User request:\n"
+        f"\"{user_text}\""
+    )
+
+def extract_graphql(text: str) -> str:
+    """Extracts a GraphQL query from a markdown block or plain text."""
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            if "query" in part or "mutation" in part or "{" in part:
+                return part.replace("graphql", "").strip()
+    return text.strip()
+
+# --- UPDATED Service Processor (Keeps the userContext logic) ---
+def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, graphql_executor_fn, user_context: Optional[dict]):
+    small_talk_response = handle_small_talk(user_text)
+    if small_talk_response:
+        return small_talk_response
+    
+    if not OLLAMA_API_KEY:
+        return json_error("NL2GQL Service Error: OLLAMA_API_KEY is missing in environment configuration.", 500)
+        
+    prompt = build_nl2gql_prompt(user_text, schema_sdl, user_context)
+
+    headers = {"Authorization": f"Bearer {OLLAMA_API_KEY}"}
+
+    try:
+        resp = requests.post(
+            OLLAMA_GENERATE_URL,
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            headers=headers,
+            timeout=90,
+        )
+    except requests.exceptions.RequestException as e:
+        return json_error(f"Ollama network error: {e}", 502)
+
+    if not resp.ok:
+        try:
+            err_details = resp.json().get("error", resp.text)
+            return json_error(f"LLM Error {resp.status_code}: {err_details}", 502)
+        except (json.JSONDecodeError, ValueError):
+            return json_error(f"Ollama returned a non-JSON error (Status: {resp.status_code}).", 502)
+
+    try:
+        gen_body = resp.json()
+        gen = gen_body.get("response", "")
+        gql = extract_graphql(gen)
+    except (ValueError, IndexError):
+        return json_error("Failed to parse the response from the LLM.", 502)
+
+    if not gql or gql.strip().upper() == "INVALID":
+        return json_error("Your request could not be mapped to a valid operation. Please try rephrasing.", 400)
+
+    if not run_graphql:
+        return {"graphql": gql}, 200
+
+    success, result = graphql_executor_fn({"query": gql})
+    
+    wrapped_error = unwrap_graphql_errors(result)
+    if wrapped_error:
+        return wrapped_error 
+
+    return {"graphql": gql, "result": result}, (200 if success else 400)
+</file>
+
+<file path="src/frontend-react/src/App.js">
+// src/frontend-react/src/App.js
+import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import './App.css';
+import LoginPage from './LoginPage';
+import ResultsDisplay from './ResultsDisplay';
+import apiClient from './api';
+import ResumeUploader from './ResumeUploader'; // Import the new uploader component
+import CompleteProfilePage from './CompleteProfilePage';
+
+function ChatPage() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [uploadTarget, setUploadTarget] = useState(null); // State to trigger the uploader UI
+
+  // --- This effect checks for a valid, non-expired session on component load ---
+  useEffect(() => {
+    const sessionJSON = localStorage.getItem('session');
+    
+    if (sessionJSON) {
+      const session = JSON.parse(sessionJSON);
+      const now = new Date().getTime();
+
+      if (now > session.expiresAt) {
+        localStorage.removeItem('session');
+        navigate('/login');
+      } else {
+        setUser(session.user);
+      }
+    } else {
+      navigate('/login');
+    }
+  }, [navigate]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('session');
+    setUser(null);
+    navigate('/login');
+  };
+
+  // --- State and handlers for chat functionality ---
+  const [messages, setMessages] = useState([
+    { type: 'text', role: 'assistant', payload: { text: "Hi! Ask me anything about users or jobs." } }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+
+  // Effect to apply the theme to the document
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
+
+  const formatContentForDisplay = (content) => {
+    return content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  };
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+
+    const userPrompt = input.trim();
+    setMessages(prev => [...prev, { type: 'text', role: 'user', payload: { text: userPrompt } }]);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const payload = { 
+        query: userPrompt,
+        userContext: user
+      };
+      
+      const response = await apiClient.post('/nl2gql', payload);
+      const { graphql = "", result = {} } = response.data;
+
+      // Check for a successful 'apply' mutation to trigger the resume uploader
+      if (result.data?.apply) {
+        const application = result.data.apply;
+        setUploadTarget({
+          appId: application.appId,
+          jobTitle: application.job.title,
+        });
+        // Add the success message to the chat first
+        setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
+      }
+      else if (graphql === "Small talk handled by service logic" && result.response) {
+        setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: result.response } }]);
+      } else {
+        setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
+      }
+    } catch (error) {
+      const err_msg = error.response?.data?.error?.message || "An unexpected error occurred while connecting to the service.";
+      setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: `**Error:** ${err_msg}` } }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Render nothing until the authentication check is complete
+  if (!user) {
+    return null;
+  }
+
+  // --- JSX for the ChatPage component ---
+  return (
+    <div className="App">
+      <div className="header-container">
+        <h1>JobChat.AI</h1>
+        <div className="header-controls">
+          <span className="user-greeting">Hi, {user.firstName}! ({user.role})</span>
+          <button onClick={toggleTheme} className="theme-toggle">
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
+          <button onClick={handleLogout} className="logout-button" title="Logout">
+            Logout
+          </button>
+        </div>
+      </div>
+
+      {user.role === 'Recruiter' && (
+        <div className="recruiter-panel">
+          <p>Recruiter Tools: You can now post jobs. Try asking: "create a job for a Senior Python Developer at Google..."</p>
+        </div>
+      )}
+
+      <div className="message-container">
+        {messages.map((m, index) => (
+          <div key={index} className={`message ${m.role}-message`}>
+            {m.type === 'results' ? (
+              <ResultsDisplay rawGql={m.payload.rawGql} rawJson={m.payload.rawJson} />
+            ) : (
+              <div
+                className="message-bubble"
+                dangerouslySetInnerHTML={{ __html: formatContentForDisplay(m.payload.text) }}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      
+      {/* Conditionally render the ResumeUploader when a target is set */}
+      {uploadTarget && (
+        <ResumeUploader 
+          target={uploadTarget} 
+          onComplete={() => setUploadTarget(null)} 
+        />
+      )}
+      
+      <form onSubmit={handleSend} className="input-form">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type a request like 'find jobs in London'..."
+          disabled={loading || !!uploadTarget} // Disable input while uploader is active
+        />
+        <button type="submit" disabled={loading || !!uploadTarget}>
+          {loading ? '...' : 'Send'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+
+// --- Main App Component for Routing ---
+function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/chat" element={<ChatPage />} />
+      <Route path="/complete-profile/:userId" element={<CompleteProfilePage />} />
+      <Route path="/" element={<Navigate to="/chat" />} />
+    </Routes>
+  );
+}
+
+export default App;
+</file>
+
 <file path="src/backend/schema.graphql">
 # src/backend/schema.graphql
 type User {
@@ -6566,190 +6769,6 @@ type Mutation {
     note: String!
   ): Application
 }
-</file>
-
-<file path="src/frontend-react/src/App.js">
-// src/frontend-react/src/App.js
-import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import './App.css';
-import LoginPage from './LoginPage';
-import ResultsDisplay from './ResultsDisplay';
-import apiClient from './api';
-import ResumeUploader from './ResumeUploader'; // Import the new uploader component
-import CompleteProfilePage from './CompleteProfilePage';
-
-function ChatPage() {
-  const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  const [uploadTarget, setUploadTarget] = useState(null); // State to trigger the uploader UI
-
-  // --- This effect checks for a valid, non-expired session on component load ---
-  useEffect(() => {
-    const sessionJSON = localStorage.getItem('session');
-    
-    if (sessionJSON) {
-      const session = JSON.parse(sessionJSON);
-      const now = new Date().getTime();
-
-      if (now > session.expiresAt) {
-        localStorage.removeItem('session');
-        navigate('/login');
-      } else {
-        setUser(session.user);
-      }
-    } else {
-      navigate('/login');
-    }
-  }, [navigate]);
-
-  const handleLogout = () => {
-    localStorage.removeItem('session');
-    setUser(null);
-    navigate('/login');
-  };
-
-  // --- State and handlers for chat functionality ---
-  const [messages, setMessages] = useState([
-    { type: 'text', role: 'assistant', payload: { text: "Hi! Ask me anything about users or jobs." } }
-  ]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
-
-  // Effect to apply the theme to the document
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
-
-  const formatContentForDisplay = (content) => {
-    return content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  };
-
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
-
-    const userPrompt = input.trim();
-    setMessages(prev => [...prev, { type: 'text', role: 'user', payload: { text: userPrompt } }]);
-    setInput('');
-    setLoading(true);
-
-    try {
-      const payload = { 
-        query: userPrompt,
-        userContext: user
-      };
-      
-      const response = await apiClient.post('/nl2gql', payload);
-      const { graphql = "", result = {} } = response.data;
-
-      // Check for a successful 'apply' mutation to trigger the resume uploader
-      if (result.data?.apply) {
-        const application = result.data.apply;
-        setUploadTarget({
-          appId: application.appId,
-          jobTitle: application.job.title,
-        });
-        // Add the success message to the chat first
-        setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
-      }
-      else if (graphql === "Small talk handled by service logic" && result.response) {
-        setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: result.response } }]);
-      } else {
-        setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
-      }
-    } catch (error) {
-      const err_msg = error.response?.data?.error?.message || "An unexpected error occurred while connecting to the service.";
-      setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: `**Error:** ${err_msg}` } }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Render nothing until the authentication check is complete
-  if (!user) {
-    return null;
-  }
-
-  // --- JSX for the ChatPage component ---
-  return (
-    <div className="App">
-      <div className="header-container">
-        <h1>JobChat.AI</h1>
-        <div className="header-controls">
-          <span className="user-greeting">Hi, {user.firstName}! ({user.role})</span>
-          <button onClick={toggleTheme} className="theme-toggle">
-            {theme === 'light' ? '🌙' : '☀️'}
-          </button>
-          <button onClick={handleLogout} className="logout-button" title="Logout">
-            Logout
-          </button>
-        </div>
-      </div>
-
-      {user.role === 'Recruiter' && (
-        <div className="recruiter-panel">
-          <p>Recruiter Tools: You can now post jobs. Try asking: "create a job for a Senior Python Developer at Google..."</p>
-        </div>
-      )}
-
-      <div className="message-container">
-        {messages.map((m, index) => (
-          <div key={index} className={`message ${m.role}-message`}>
-            {m.type === 'results' ? (
-              <ResultsDisplay rawGql={m.payload.rawGql} rawJson={m.payload.rawJson} />
-            ) : (
-              <div
-                className="message-bubble"
-                dangerouslySetInnerHTML={{ __html: formatContentForDisplay(m.payload.text) }}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-      
-      {/* Conditionally render the ResumeUploader when a target is set */}
-      {uploadTarget && (
-        <ResumeUploader 
-          target={uploadTarget} 
-          onComplete={() => setUploadTarget(null)} 
-        />
-      )}
-      
-      <form onSubmit={handleSend} className="input-form">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a request like 'find jobs in London'..."
-          disabled={loading || !!uploadTarget} // Disable input while uploader is active
-        />
-        <button type="submit" disabled={loading || !!uploadTarget}>
-          {loading ? '...' : 'Send'}
-        </button>
-      </form>
-    </div>
-  );
-}
-
-
-// --- Main App Component for Routing ---
-function App() {
-  return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/chat" element={<ChatPage />} />
-      <Route path="/complete-profile/:userId" element={<CompleteProfilePage />} />
-      <Route path="/" element={<Navigate to="/chat" />} />
-    </Routes>
-  );
-}
-
-export default App;
 </file>
 
 </files>

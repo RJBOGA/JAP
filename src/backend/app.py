@@ -2,6 +2,7 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+import logging 
 
 import bcrypt
 import requests
@@ -34,6 +35,16 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
 app = Flask(__name__)
 CORS(app)
 explorer_html = ExplorerGraphiQL().html(None)
+
+# Configure basic logging to console
+logging.basicConfig(
+    level=logging.DEBUG, # Set to DEBUG for maximum output during debugging
+    format='%(asctime)s - %(levelname)s - %(threadName)s - %(message)s'
+)
+logger = logging.getLogger('FLASK_APP') # Create a main logger instance
+# --- NEW: Suppress Verbose MongoDB Logging ---
+logging.getLogger('pymongo').setLevel(logging.WARNING)
+logging.getLogger('pymongo.server_monitoring').setLevel(logging.WARNING)
 
 # --- Load GraphQL schema ---
 schema_path = os.path.join(os.path.dirname(__file__), "schema.graphql")
@@ -69,6 +80,9 @@ def graphql_server():
     user_id = request.headers.get("X-User-ID")
     first_name = request.headers.get("X-User-FirstName", "")
     last_name = request.headers.get("X-User-LastName", "")
+    logger.debug(f"Incoming Headers - X-User-ID: {user_id}, Role: {user_role}")
+    logger.debug(f"Constructed Context keys: {list(context.keys())}")
+
     
     # Build context with user information
     context = {
@@ -90,6 +104,7 @@ def graphql_server():
     print(f"DEBUG: Constructed Context keys: {list(context.keys())}")
     if "UserID" in context:
         print(f"DEBUG: Context UserID: {context['UserID']}")
+        logger.debug(f"Context UserID: {context['UserID']}")
     
     success, result = graphql_sync(
         schema, 
@@ -97,6 +112,7 @@ def graphql_server():
         context_value=context, 
         debug=app.debug
     )
+    logger.debug(f"result: {result}")
     return jsonify(result), (200 if success else 400)
 
 # --- Health check ---

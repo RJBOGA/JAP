@@ -104,4 +104,5 @@ def to_application_output(doc: dict): # New
         "userName": doc.get("userName"),
         "jobTitle": doc.get("jobTitle"),
         "companyName": doc.get("companyName"),
+        "emailSent": doc.get("emailSent"), # <-- NEW
     }

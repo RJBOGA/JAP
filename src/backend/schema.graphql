@@ -105,6 +105,7 @@ type Application {
   userName: String
   jobTitle: String
   companyName: String
+  emailSent: String # Track email status
 }
 input ApplicationInput {
   userId: Int!
