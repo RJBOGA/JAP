@@ -54,6 +54,8 @@ scripts/seed_db.py
 scripts/test_denormalized_schema.py
 scripts/test_login.py
 scripts/test_nl2gql_denormalized.py
+scripts/test_schedule_smoke.py
+scripts/test_smtp_config.py
 scripts/test_workflow.py
 src/.env
 src/backend/.env
@@ -66,11 +68,13 @@ src/backend/repository/job_repo.py
 src/backend/repository/user_repo.py
 src/backend/resolvers/application_resolvers.py
 src/backend/resolvers/job_resolvers.py
+src/backend/resolvers/scheduling_resolvers.py
 src/backend/resolvers/user_resolvers.py
 src/backend/schema.graphql
 src/backend/services/email_service.py
 src/backend/services/nl2gql_service.py
 src/backend/services/resume_parser_service.py
+src/backend/services/scheduling_service.py
 src/backend/validators/common_validators.py
 src/frontend-react/.env.development
 src/frontend-react/package.json
@@ -92,6 +96,288 @@ WORKFLOW_DIAGRAM.txt
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="scripts/test_schedule_smoke.py">
+import os
+import sys
+from datetime import datetime, timedelta
+import traceback
+from pprint import pprint
+
+# Ensure project root is on sys.path (same approach as other scripts)
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from src.backend.services import scheduling_service
+from src.backend.db import applications_collection, schedules_collection, users_collection, jobs_collection, next_application_id
+
+
+def main():
+    try:
+        app = applications_collection().find_one()
+        if not app:
+            print("No application found in DB. Creating a test application...")
+            # Find a job and an applicant user to create a minimal application
+            job = jobs_collection().find_one()
+            applicant = users_collection().find_one({"role": "Applicant"})
+            if not job or not applicant:
+                print("Could not find a job or an applicant user to create a test application. Aborting.")
+                return
+            job_id = job.get("jobId")
+            candidate_id = applicant.get("UserID")
+            app_doc = {
+                "appId": next_application_id(),
+                "userId": candidate_id,
+                "jobId": job_id,
+                "status": "Applied",
+                "submittedAt": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                "notes": "",
+                "userName": f"{applicant.get('firstName')} {applicant.get('lastName')}",
+                "jobTitle": job.get('title'),
+                "companyName": job.get('company')
+            }
+            applications_collection().insert_one(app_doc)
+            app = app_doc
+        else:
+            job_id = app.get("jobId")
+            candidate_id = app.get("userId")
+
+        sched = schedules_collection().find_one()
+        if not sched:
+            print("No recruiter schedules found. Creating a simple schedule for an available recruiter...")
+            recruiter = users_collection().find_one({"role": "Recruiter"})
+            if not recruiter:
+                print("No recruiter user found to create a schedule. Aborting.")
+                return
+            recruiter_id = recruiter.get("UserID")
+            schedules_collection().insert_one({
+                "recruiterId": recruiter_id,
+                "availability": [
+                    {"dayOfWeek": "Monday", "startTime": "09:00", "endTime": "17:00"},
+                    {"dayOfWeek": "Tuesday", "startTime": "09:00", "endTime": "17:00"}
+                ]
+            })
+            sched = schedules_collection().find_one({"recruiterId": recruiter_id})
+        recruiter_id = sched.get("recruiterId")
+
+        print(f"Found application: appId={app.get('appId')}, jobId={job_id}, candidateId={candidate_id}")
+        print(f"Found recruiter schedule for recruiterId={recruiter_id}")
+
+        start_date = datetime.utcnow()
+        end_date = start_date + timedelta(days=7)
+
+        print("Searching for open slots (next 7 days)...")
+        open_slots = scheduling_service.find_open_slots(recruiter_id, candidate_id, start_date, end_date, duration_minutes=30)
+        print(f"Open slots found: {len(open_slots)}")
+        if not open_slots:
+            print("No open slots available to book.")
+            return
+
+        # Pick the first available slot and book
+        slot_iso = open_slots[0]
+        start_time = datetime.fromisoformat(slot_iso)
+        end_time = start_time + timedelta(minutes=30)
+
+        print(f"Attempting to book interview at {start_time.isoformat()} - {end_time.isoformat()}")
+        interview = scheduling_service.book_interview(job_id, candidate_id, recruiter_id, start_time, end_time)
+        print("Interview booked:")
+        pprint(interview)
+
+    except Exception as e:
+        print("Exception during smoke test:")
+        traceback.print_exc()
+
+if __name__ == '__main__':
+    main()
+</file>
+
+<file path="src/backend/resolvers/scheduling_resolvers.py">
+from ariadne import QueryType, MutationType, ObjectType
+from datetime import datetime, timedelta
+# Lazy imports are no longer needed as the app is starting now
+from ..services import scheduling_service
+from ..repository import job_repo, user_repo
+from ..db import to_user_output
+
+query = QueryType()
+mutation = MutationType()
+interview = ObjectType("Interview") 
+
+# --- Query Resolvers ---
+
+@query.field("mySchedule")
+def resolve_my_schedule(_, info):
+	user_id = info.context.get("UserID")
+	user_role = info.context.get("user_role")
+	if not user_id or user_role != "Recruiter":
+		raise PermissionError("Access denied: Only a Recruiter can view their schedule.")
+    
+	schedule = scheduling_service.schedules_collection().find_one({"recruiterId": user_id}) 
+	return schedule.get("availability") if schedule else []
+
+# --- Mutation Resolvers ---
+
+@mutation.field("setMyAvailability")
+def resolve_set_my_availability(_, info, availability):
+	user_id = info.context.get("UserID")
+	user_role = info.context.get("user_role")
+	if not user_id or user_role != "Recruiter":
+		raise PermissionError("Access denied: Only a Recruiter can set their availability.")
+        
+	return scheduling_service.set_recruiter_availability(user_id, availability)
+
+@mutation.field("bookInterview")
+def resolve_book_interview(_, info, jobId, candidateId, startTime, endTime):
+	# This is a Recruiter-only mutation
+	user_id = info.context.get("UserID")
+	user_role = info.context.get("user_role")
+	if not user_id or user_role != "Recruiter":
+		raise PermissionError("Access denied: Only a Recruiter can book interviews.")
+        
+	try:
+		start_time_dt = datetime.fromisoformat(startTime)
+		end_time_dt = datetime.fromisoformat(endTime)
+	except ValueError:
+		raise ValueError("Invalid time format. Use ISO 8601 format.")
+    
+	booked_interview = scheduling_service.book_interview(
+		job_id=jobId,
+		candidate_id=candidateId,
+		recruiter_id=user_id,
+		start_time=start_time_dt,
+		end_time=end_time_dt
+	)
+	return booked_interview
+
+# --- Field resolvers for the Interview type ---
+@interview.field("job")
+def resolve_interview_job(interview_obj, _):
+	return job_repo.to_job_output(job_repo.find_job_by_id(interview_obj.get("jobId")))
+
+@interview.field("candidate")
+def resolve_interview_candidate(interview_obj, _):
+	return user_repo.to_user_output(user_repo.find_one_by_id(interview_obj.get("candidateId")))
+</file>
+
+<file path="src/backend/services/scheduling_service.py">
+from datetime import datetime, timedelta, time
+from ..repository import user_repo, job_repo
+from ..db import schedules_collection, interviews_collection, next_interview_id
+from ..repository.application_repo import update_one_application
+
+# --- Public Service Functions ---
+
+def set_recruiter_availability(recruiter_id: int, availability_data: list):
+	"""Creates or replaces the availability schedule for a given recruiter."""
+	# Basic validation (ensures fields exist)
+	for slot in availability_data:
+		if not all(k in slot for k in ['dayOfWeek', 'startTime', 'endTime']):
+			raise ValueError("Each availability slot must contain dayOfWeek, startTime, and endTime.")
+    
+	schedules_collection().update_one(
+		{"recruiterId": recruiter_id},
+		{"$set": {"availability": availability_data, "recruiterId": recruiter_id}},
+		upsert=True
+	)
+	return True
+
+def find_open_slots(recruiter_id: int, candidate_id: int, start_date: datetime, end_date: datetime, duration_minutes: int = 30):
+	"""
+	The core conflict-resolution algorithm.
+	Finds available interview slots for a recruiter and a candidate within a date range.
+	"""
+	# 1. Get the recruiter's general weekly availability
+	schedule = schedules_collection().find_one({"recruiterId": recruiter_id})
+	if not schedule or not schedule.get("availability"):
+		return [] # Recruiter has not set their availability
+
+	# 2. Get all existing interviews for BOTH the recruiter and the candidate
+	# NOTE: MongoDB ISO 8601 strings are sortable and comparable
+	booked_interviews = list(interviews_collection().find({
+		"$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
+		"startTime": {"$gte": start_date.isoformat()},
+		"endTime": {"$lte": end_date.isoformat()}
+	}))
+    
+	booked_slots = set()
+	for interview in booked_interviews:
+		# Convert booked slots to datetime objects for accurate comparison
+		start = datetime.fromisoformat(interview["startTime"])
+		end = datetime.fromisoformat(interview["endTime"])
+		booked_slots.add((start, end))
+
+	# 3. Iterate through each day in the date range and generate potential slots
+	open_slots = []
+	day_map = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
+    
+	current_date = start_date
+	while current_date <= end_date:
+		day_of_week = day_map[current_date.weekday()]
+        
+		# Find if the recruiter is available on this day of the week
+		for avail_slot in schedule["availability"]:
+			if avail_slot["dayOfWeek"].lower() == day_of_week.lower():
+                
+				# Combine current_date with time component from availability slot
+				slot_start_time = datetime.strptime(avail_slot["startTime"], "%H:%M").time()
+				slot_end_time = datetime.strptime(avail_slot["endTime"], "%H:%M").time()
+
+				potential_start = datetime.combine(current_date.date(), slot_start_time)
+				potential_end_limit = datetime.combine(current_date.date(), slot_end_time)
+                
+				while (potential_start + timedelta(minutes=duration_minutes)) <= potential_end_limit:
+					potential_end = potential_start + timedelta(minutes=duration_minutes)
+                    
+					# 4. Check for conflicts
+					is_conflict = False
+					for booked_start, booked_end in booked_slots:
+						# Check for overlap: (StartA < EndB) and (EndA > StartB)
+						if (potential_start < booked_end) and (potential_end > booked_start):
+							is_conflict = True
+							break
+                    
+					if not is_conflict:
+						# Return in ISO format for consistency
+						open_slots.append(potential_start.isoformat())
+                        
+					potential_start += timedelta(minutes=duration_minutes)
+        
+		current_date += timedelta(days=1)
+        
+	return open_slots
+
+def book_interview(job_id: int, candidate_id: int, recruiter_id: int, start_time: datetime, end_time: datetime):
+	"""Books a new interview after a final conflict check."""
+    
+	# Final conflict check right before booking
+	conflicts = list(interviews_collection().find({
+		"$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
+		"startTime": {"$lt": end_time.isoformat()},
+		"endTime": {"$gt": start_time.isoformat()}
+	}))
+
+	if conflicts:
+		raise ValueError("Conflict detected. This time slot is no longer available.")
+        
+	interview_doc = {
+		"interviewId": next_interview_id(),
+		"jobId": job_id,
+		"candidateId": candidate_id,
+		"recruiterId": recruiter_id,
+		"startTime": start_time.isoformat(),
+		"endTime": end_time.isoformat()
+	}
+    
+	interviews_collection().insert_one(interview_doc)
+    
+	# Update application status to Interviewing/Scheduled
+	app_query = {"userId": candidate_id, "jobId": job_id}
+	update_one_application(app_query, {"status": "Interviewing"})
+    
+	# You would also trigger the email here, but we will leave the full logic 
+	# out of the service layer for now to avoid dependency cycles.
+    
+	return interview_doc
+</file>
 
 <file path="MANUAL_TESTING_GUIDE.md">
 # MANUAL TESTING GUIDE - Interview Workflow Automation
@@ -1918,6 +2204,88 @@ for i, test in enumerate(test_queries, 1):
 print("\n" + "="*70)
 print("Natural language processing test complete!")
 print("="*70)
+</file>
+
+<file path="scripts/test_smtp_config.py">
+# scripts/test_smtp_config.py
+import os
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from dotenv import load_dotenv
+
+# --- 1. Load Environment Variables (Critical for isolation) ---
+# We load the .env files explicitly to ensure config visibility
+load_dotenv(os.path.join(os.path.dirname(__file__), '../src/.env'))
+load_dotenv(os.path.join(os.path.dirname(__file__), '../src/backend/.env'))
+
+# --- 2. Configuration & Test Data ---
+SMTP_HOST = os.getenv("EMAIL_HOST")
+SMTP_PORT = int(os.getenv("EMAIL_PORT", 587))
+SMTP_USERNAME = os.getenv("EMAIL_USERNAME")
+SMTP_PASSWORD = os.getenv("EMAIL_PASSWORD") # This is the App Password
+SENDER_EMAIL = SMTP_USERNAME 
+TEST_RECIPIENT = SMTP_USERNAME # Sending test email to self
+
+def run_smtp_test():
+    """Reads environment and attempts a connection/login/send test."""
+    print("="*60)
+    print("EMAIL CONFIGURATION & SMTP DIAGNOSTIC TEST")
+    print("="*60)
+    
+    # Check 1: Verify Configuration Read
+    if not all([SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD]):
+        print("❌ CONFIGURATION FAILURE: One or more critical variables are missing.")
+        print(f"  HOST: {SMTP_HOST}")
+        print(f"  USER: {SMTP_USERNAME}")
+        print(f"  PASS: {'SET' if SMTP_PASSWORD else 'NOT SET'}")
+        print("="*60)
+        return
+
+    print("✅ Configuration variables read successfully.")
+    print(f"   HOST: {SMTP_HOST}:{SMTP_PORT}")
+    print(f"   USER: {SMTP_USERNAME}")
+    print(f"   RECIPIENT: {TEST_RECIPIENT}")
+    print("-"*60)
+    
+    # Check 2: Attempt SMTP Connection and Authentication
+    context = ssl.create_default_context()
+    subject = "SMTP Diagnostic Test from JobChat.AI"
+    html_body = "<p>If you received this email, your SMTP configuration is correct!</p>"
+    
+    message = MIMEText(html_body, 'html')
+    message['Subject'] = subject
+    message['From'] = SENDER_EMAIL
+    message['To'] = TEST_RECIPIENT
+
+    try:
+        print("Attempting connection and login...")
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls(context=context)
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SENDER_EMAIL, TEST_RECIPIENT, message.as_string())
+        
+        print("\n🎉🎉🎉 TEST SUCCESS! 🎉🎉🎉")
+        print("The test email should be in your inbox shortly.")
+        print("Your SMTP configuration is CORRECT.")
+        
+    except smtplib.SMTPAuthenticationError:
+        print("\n❌ AUTHENTICATION FAILURE!")
+        print("  Reason: Incorrect App Password or Gmail settings are blocking the login.")
+        print("  Action: GENERATE A NEW APP PASSWORD (see previous instructions).")
+        
+    except smtplib.SMTPServerDisconnected:
+        print("\n❌ CONNECTION FAILURE: Server Disconnected.")
+        print("  Reason: Host or Port might be incorrect, or a firewall is blocking port 587.")
+        
+    except Exception as e:
+        print(f"\n❌ UNHANDLED SMTP ERROR: {type(e).__name__}: {e}")
+        print("  Action: Check firewall or other network/server settings.")
+        
+    print("="*60)
+
+if __name__ == "__main__":
+    run_smtp_test()
 </file>
 
 <file path="scripts/test_workflow.py">
@@ -4091,116 +4459,6 @@ This project is maintained by RJBOGA
 Licensed under the MIT License
 </file>
 
-<file path="src/backend/db.py">
-# db.py
-import os
-from datetime import datetime
-from dotenv import load_dotenv
-from pymongo import MongoClient, ReturnDocument
-
-# ... (no changes to MONGO_URI, DB_NAME, _client, _db, get_db)
-load_dotenv(os.path.join(os.path.dirname(__file__), '../../config/.env'))
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-DB_NAME = os.getenv("DB_NAME", "jobtracker")
-_client = MongoClient(MONGO_URI)
-_db = _client[DB_NAME]
-def get_db():
-    return _db
-
-
-# --- Collection Helpers ---
-def users_collection():
-    return _db["users"]
-
-def jobs_collection():
-    return _db["jobs"]
-
-def applications_collection(): # New
-    return _db["applications"]
-
-def counters_collection():
-    return _db["counters"]
-
-
-# --- Counters (User, Job, and new Application counter) ---
-def _ensure_counter(counter_id: str):
-    counters_collection().update_one(
-        {"_id": counter_id},
-        {"$setOnInsert": {"sequence_value": 0}},
-        upsert=True,
-    )
-
-def _next_id(counter_id: str):
-    result = counters_collection().find_one_and_update(
-        {"_id": counter_id},
-        {"$inc": {"sequence_value": 1}},
-        return_document=ReturnDocument.AFTER,
-        upsert=True,
-    )
-    return int(result["sequence_value"])
-
-def ensure_user_counter():
-    _ensure_counter("UserID")
-
-def next_user_id():
-    return _next_id("UserID")
-
-def ensure_job_counter():
-    _ensure_counter("jobId")
-
-def next_job_id():
-    return _next_id("jobId")
-
-def ensure_application_counter(): # New
-    _ensure_counter("appId")
-
-def next_application_id(): # New
-    return _next_id("appId")
-
-
-# --- Output Formatting (no changes to user/job, new for application) ---
-def to_user_output(doc: dict): # ... no changes
-    if not doc:
-        return None
-    return {
-        "UserID": int(doc.get("UserID")) if doc.get("UserID") is not None else None,
-        "FirstName": doc.get("FirstName"),
-        "LastName": doc.get("LastName"),
-        "DateOfBirth": doc.get("DateOfBirth"),
-        "ProfessionalTitle": doc.get("ProfessionalTitle"),
-        "Summary": doc.get("Summary"),
-    }
-
-def to_job_output(doc: dict): # ... no changes
-    if not doc:
-        return None
-    return {
-        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
-        "title": doc.get("title"),
-        "company": doc.get("company"),
-        "location": doc.get("location"),
-        "salaryRange": doc.get("salaryRange"),
-        "skillsRequired": doc.get("skillsRequired"),
-        "description": doc.get("description"),
-        "postedAt": doc.get("postedAt"),
-    }
-
-def to_application_output(doc: dict): # New
-    if not doc:
-        return None
-    return {
-        "appId": int(doc.get("appId")) if doc.get("appId") is not None else None,
-        "userId": int(doc.get("userId")) if doc.get("userId") is not None else None,
-        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
-        "status": doc.get("status"),
-        "submittedAt": doc.get("submittedAt"),
-        "notes": doc.get("notes"),
-        "userName": doc.get("userName"),
-        "jobTitle": doc.get("jobTitle"),
-        "companyName": doc.get("companyName"),
-    }
-</file>
-
 <file path="src/backend/repository/application_repo.py">
 from typing import Optional, Dict, Any, List
 from pymongo import ReturnDocument
@@ -4230,74 +4488,6 @@ def update_one_application(q: Dict[str, Any], set_fields: Dict[str, Any]) -> Opt
 def count_applications(query: Dict[str, Any]) -> int:
     """Counts the number of documents in the applications collection matching a query."""
     return applications_collection().count_documents(query)
-</file>
-
-<file path="src/backend/services/email_service.py">
-# src/backend/services/email_service.py
-import os
-import smtplib
-import ssl
-from email.mime.text import MIMEText
-from dotenv import load_dotenv
-
-# --- Load Env Vars (Ensure visibility) ---
-load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
-load_dotenv(os.path.join(os.path.dirname(__file__), '../../.env'))
-
-# --- Configuration ---
-SMTP_HOST = os.getenv("EMAIL_HOST")
-SMTP_PORT = int(os.getenv("EMAIL_PORT", 587))
-SMTP_USERNAME = os.getenv("EMAIL_USERNAME")
-SMTP_PASSWORD = os.getenv("EMAIL_PASSWORD")
-SENDER_EMAIL = SMTP_USERNAME # The sender must be the authenticated account
-
-def _send_email(to_email: str, subject: str, html_body: str):
-    """Internal helper to connect to SMTP and send the email."""
-    if not all([SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD]):
-        print("WARNING: SMTP credentials not fully configured. Skipping email.")
-        return
-
-    message = MIMEText(html_body, 'html')
-    message['Subject'] = subject
-    message['From'] = SENDER_EMAIL
-    message['To'] = to_email
-
-    context = ssl.create_default_context()
-    
-    try:
-        # Use starttls for port 587
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls(context=context)
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SENDER_EMAIL, to_email, message.as_string())
-        
-        print(f"SMTP Success: Email sent to {to_email}")
-        
-    except Exception as e:
-        print(f"SMTP ERROR: Failed to send email to {to_email}. Error: {type(e).__name__}: {e}")
-
-def send_interview_invitation(to_email: str, candidate_name: str, job_title: str, company: str):
-    """Sends an interview invitation email."""
-    subject = f"Interview Invitation for the {job_title} position at {company}"
-    html_body = f"""
-    <p>Hi {candidate_name},</p>
-    <p>Congratulations! We would like to invite you for an interview for the <strong>{job_title}</strong> role at <strong>{company}</strong>.</p>
-    <p>Our hiring team will be in touch shortly to coordinate a time that works for you.</p>
-    <p>Best regards,<br/>The Hiring Team at {company}</p>
-    """
-    _send_email(to_email, subject, html_body)
-
-def send_rejection_notification(to_email: str, candidate_name: str, job_title: str, company: str):
-    """Sends a rejection email to unsuccessful applicants."""
-    subject = f"Update on your application for {job_title} at {company}"
-    html_body = f"""
-    <p>Hi {candidate_name},</p>
-    <p>Thank you for your interest in the <strong>{job_title}</strong> role at <strong>{company}</strong>.</p>
-    <p>We received a large number of qualified applications, and after careful consideration, we have decided to move forward with other candidates whose experience more closely matches our current needs.</p>
-    <p>We appreciate you taking the time to apply and wish you the best of luck in your job search.</p>
-    <p>Best regards,<br/>The Hiring Team at {company}</p>
-    """
-    _send_email(to_email, subject, html_body)
 </file>
 
 <file path="src/frontend-react/.env.development">
@@ -4377,42 +4567,264 @@ root.render(
 // and potentially CSS, but 'react-scripts start' handles index.html creation.
 </file>
 
-<file path="src/.env">
-MONGO_URI=mongodb://localhost:27017/
-DB_NAME=jobtracker
+<file path="src/backend/db.py">
+# db.py
+import os
+from datetime import datetime
+from dotenv import load_dotenv
+from pymongo import MongoClient, ReturnDocument
 
-# Alternative: If using Ollama cloud service, uncomment and configure:
-OLLAMA_HOST=https://ollama.com
-OLLAMA_MODEL=gpt-oss:120b-cloud  
-OLLAMA_API_KEY=2a5870ffa8ab469b879ab02999b684db.28nZHl4ZWnBXzrvzWFpiJ7DT
+# ... (no changes to MONGO_URI, DB_NAME, _client, _db, get_db)
+load_dotenv(os.path.join(os.path.dirname(__file__), '../../config/.env'))
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+DB_NAME = os.getenv("DB_NAME", "jobtracker")
+_client = MongoClient(MONGO_URI)
+_db = _client[DB_NAME]
+def get_db():
+    return _db
 
-RESEND_API_KEY=re_PAfdoM9e_FQu3ZGn7hKWJ2U6iaG7BiuNf
 
-# Email Configuration
-spring.mail.host=smtp.gmail.com
-spring.mail.port=587
-spring.mail.username=raju.boga18@gmail.com
-spring.mail.password=wmmmrqzbjxjapjeo
-spring.mail.properties.mail.smtp.auth=true
-spring.mail.properties.mail.smtp.starttls.enable=true
+# --- Collection Helpers ---
+def users_collection():
+    return _db["users"]
+
+def jobs_collection():
+    return _db["jobs"]
+
+def applications_collection(): # New
+    return _db["applications"]
+
+def counters_collection():
+    return _db["counters"]
+
+
+# --- NEW: Scheduling Collections ---
+def schedules_collection():
+    return _db["schedules"]
+
+def interviews_collection():
+    return _db["interviews"]
+
+
+# --- Counters (User, Job, and new Application counter) ---
+def _ensure_counter(counter_id: str):
+    counters_collection().update_one(
+        {"_id": counter_id},
+        {"$setOnInsert": {"sequence_value": 0}},
+        upsert=True,
+    )
+
+def _next_id(counter_id: str):
+    result = counters_collection().find_one_and_update(
+        {"_id": counter_id},
+        {"$inc": {"sequence_value": 1}},
+        return_document=ReturnDocument.AFTER,
+        upsert=True,
+    )
+    return int(result["sequence_value"])
+
+def ensure_user_counter():
+    _ensure_counter("UserID")
+
+def next_user_id():
+    return _next_id("UserID")
+
+def ensure_job_counter():
+    _ensure_counter("jobId")
+
+def next_job_id():
+    return _next_id("jobId")
+
+def ensure_application_counter(): # New
+    _ensure_counter("appId")
+
+def next_application_id(): # New
+    return _next_id("appId")
+
+
+# --- NEW: Interview Counters ---
+def ensure_interview_counter():
+    _ensure_counter("interviewId")
+
+def next_interview_id():
+    return _next_id("interviewId")
+
+
+# --- Output Formatting (no changes to user/job, new for application) ---
+def to_user_output(doc: dict): # ... no changes
+    if not doc:
+        return None
+    return {
+        "UserID": int(doc.get("UserID")) if doc.get("UserID") is not None else None,
+        "FirstName": doc.get("FirstName"),
+        "LastName": doc.get("LastName"),
+        "DateOfBirth": doc.get("DateOfBirth"),
+        "ProfessionalTitle": doc.get("ProfessionalTitle"),
+        "Summary": doc.get("Summary"),
+    }
+
+def to_job_output(doc: dict): # ... no changes
+    if not doc:
+        return None
+    return {
+        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
+        "title": doc.get("title"),
+        "company": doc.get("company"),
+        "location": doc.get("location"),
+        "salaryRange": doc.get("salaryRange"),
+        "skillsRequired": doc.get("skillsRequired"),
+        "description": doc.get("description"),
+        "postedAt": doc.get("postedAt"),
+    }
+
+def to_application_output(doc: dict): # New
+    if not doc:
+        return None
+    return {
+        "appId": int(doc.get("appId")) if doc.get("appId") is not None else None,
+        "userId": int(doc.get("userId")) if doc.get("userId") is not None else None,
+        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
+        "status": doc.get("status"),
+        "submittedAt": doc.get("submittedAt"),
+        "notes": doc.get("notes"),
+        "userName": doc.get("userName"),
+        "jobTitle": doc.get("jobTitle"),
+        "companyName": doc.get("companyName"),
+        "emailSent": doc.get("emailSent"), # <-- NEW
+    }
 </file>
 
-<file path="src/backend/.env">
-MONGO_URI=mongodb://localhost:27017/
-DB_NAME=jobtracker
+<file path="src/backend/services/email_service.py">
+# src/backend/services/email_service.py
+import os
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from dotenv import load_dotenv
+from ..repository import application_repo 
+import logging
 
-# Alternative: If using Ollama cloud service, uncomment and configure:
-OLLAMA_HOST=https://ollama.com
-OLLAMA_MODEL=gpt-oss:120b-cloud  
-OLLAMA_API_KEY=2a5870ffa8ab469b879ab02999b684db.28nZHl4ZWnBXzrvzWFpiJ7DT
+logger = logging.getLogger(__name__)
+# --- IMPORTS FOR AUDIT ---
+# Note: The application_repo relies on the MongoDB connection setup in db.py, 
+# but this file only needs the import to use the update_one_application function.
+from ..repository import application_repo 
+# -----------------------------
 
-RESEND_API_KEY=re_PAfdoM9e_FQu3ZGn7hKWJ2U6iaG7BiuNf
+# --- Load Env Vars (Ensure visibility) ---
+# Explicitly load necessary env files relative to this script's location
+load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
+load_dotenv(os.path.join(os.path.dirname(__file__), '../../.env'))
 
-# --- NEW: GMAIL/SMTP EMAIL CONFIGURATION ---
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USERNAME=raju.boga18@gmail.com
-EMAIL_PASSWORD=wmmmrqzbjxjapjeo
+# --- Configuration ---
+SMTP_HOST = os.getenv("EMAIL_HOST")
+SMTP_PORT = int(os.getenv("EMAIL_PORT", 587))
+SMTP_USERNAME = os.getenv("EMAIL_USERNAME")
+SMTP_PASSWORD = os.getenv("EMAIL_PASSWORD")
+SENDER_EMAIL = SMTP_USERNAME 
+
+def _send_email(to_email: str, subject: str, html_body: str) -> bool:
+    """Internal helper to connect to SMTP and send the email."""
+    # If this check fails, we still want to log it
+    if not all([SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD]):
+        logger.error("FATAL CONFIG ERROR: SMTP credentials missing in .env")
+        return False
+
+    # This print MUST show up if the function is executed.
+    print(f"ULTIMATE_DEBUG: Attempting SMTP login with {SMTP_USERNAME} to {SMTP_HOST}:{SMTP_PORT}") 
+
+    message = MIMEText(html_body, 'html', 'utf-8')
+    message['Subject'] = subject
+    message['From'] = SENDER_EMAIL
+    message['To'] = to_email
+
+    context = ssl.create_default_context()
+    
+    try:
+        logger.debug(f"DEBUG_E: Attempting connection to {SMTP_HOST}:{SMTP_PORT}...")
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls(context=context)
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SENDER_EMAIL, to_email, message.as_string().encode('utf-8')) 
+        
+        print(f"ULTIMATE_DEBUG: SMTP SUCCESS to {to_email}")
+        return True
+        
+    except Exception as e:
+        # Re-raise the exception after printing for a full traceback
+        print(f"ULTIMATE_DEBUG: SMTP FAILURE - {type(e).__name__}: {e}")
+        raise # <-- CRITICAL: Re-raise the exception to force Flask to show the traceback
+        return False
+
+# def _send_email(to_email: str, subject: str, html_body: str) -> bool:
+#     """Internal helper to connect to SMTP and send the email."""
+#     if not all([SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD]):
+#         logger.warning("SMTP credentials not fully configured. Skipping email.")
+#         logger.debug(f"Host={SMTP_HOST}, User={SMTP_USERNAME}, Pass_Set={bool(SMTP_PASSWORD)}") # <-- Use logger.debug
+#         print("WARNING: SMTP credentials not fully configured. Skipping email.")
+#         return False
+    
+#     # MIME message construction
+#     message = MIMEText(html_body, 'html')
+#     message['Subject'] = subject
+#     message['From'] = SENDER_EMAIL
+#     message['To'] = to_email
+
+#     context = ssl.create_default_context()
+    
+#     try:
+#         # Use starttls for port 587
+#         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+#             server.starttls(context=context)
+#             server.login(SMTP_USERNAME, SMTP_PASSWORD)
+#             server.sendmail(SENDER_EMAIL, to_email, message.as_string())
+        
+#         print(f"SMTP Success: Email sent to {to_email}")
+#         return True
+        
+#     except Exception as e:
+#         print(f"SMTP ERROR: Failed to send email to {to_email}. Error: {type(e).__name__}: {e}")
+#         logger.error(f"SMTP ERROR: Failed to send email to {to_email}. Error: {type(e).__name__}: {e}") # <-- Use logger.error
+#         return False
+
+def _audit_email_success(app_id: int, event_type: str):
+    """Updates the application with the successful email event type."""
+    try:
+        application_repo.update_one_application(
+            {"appId": app_id}, 
+            {"emailSent": event_type}
+        )
+        logger.info(f"AUDIT Success: Application {app_id} marked as {event_type} email sent.") # <-- Use logger.info
+        print(f"AUDIT Success: Application {app_id} marked as {event_type} email sent.")
+        
+    except Exception as e:
+        logger.error(f"AUDIT ERROR: Failed to update application {app_id} emailSent field. Error: {e}") # <-- Use logger.error
+        print(f"AUDIT ERROR: Failed to update application {app_id} emailSent field. Error: {e}")
+
+def send_interview_invitation(to_email: str, candidate_name: str, job_title: str, company: str, app_id: int):
+    """Sends an interview invitation email and audits success."""
+    subject = f"Interview Invitation for the {job_title} position at {company}"
+    html_body = f"""
+    <p>Hi {candidate_name},</p>
+    <p>Congratulations! We would like to invite you for an interview for the <strong>{job_title}</strong> role at <strong>{company}</strong>.</p>
+    <p>Our hiring team will be in touch shortly to coordinate a time that works for you.</p>
+    <p>Best regards,<br/>The Hiring Team at {company}</p>
+    """
+    if _send_email(to_email, subject, html_body):
+        _audit_email_success(app_id, "Interview")
+
+def send_rejection_notification(to_email: str, candidate_name: str, job_title: str, company: str, app_id: int):
+    """Sends a rejection email to unsuccessful applicants and audits success."""
+    subject = f"Update on your application for {job_title} at {company}"
+    html_body = f"""
+    <p>Hi {candidate_name},</p>
+    <p>Thank you for your interest in the <strong>{job_title}</strong> role at <strong>{company}</strong>.</p>
+    <p>We received a large number of qualified applications, and after careful consideration, we have decided to move forward with other candidates whose experience more closely matches our current needs.</p>
+    <p>We appreciate you taking the time to apply and wish you the best of luck in your job search.</p>
+    <p>Best regards,<br/>The Hiring Team at {company}</p>
+    """
+    if _send_email(to_email, subject, html_body):
+        _audit_email_success(app_id, "Rejected")
 </file>
 
 <file path="src/backend/services/resume_parser_service.py">
@@ -4531,6 +4943,42 @@ bcrypt
 Faker
 pypdf
 python-docx
+</file>
+
+<file path="src/.env">
+MONGO_URI=mongodb://localhost:27017/
+DB_NAME=jobtracker
+
+# Alternative: If using Ollama cloud service, uncomment and configure:
+OLLAMA_HOST=https://ollama.com
+OLLAMA_MODEL=gpt-oss:120b-cloud  
+OLLAMA_API_KEY=2a5870ffa8ab469b879ab02999b684db.28nZHl4ZWnBXzrvzWFpiJ7DT
+
+RESEND_API_KEY=re_PAfdoM9e_FQu3ZGn7hKWJ2U6iaG7BiuNf
+
+# --- NEW: GMAIL/SMTP EMAIL CONFIGURATION ---
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USERNAME=raju.boga18@gmail.com
+EMAIL_PASSWORD=pwdjrlxaxzsaxnqh
+</file>
+
+<file path="src/backend/.env">
+MONGO_URI=mongodb://localhost:27017/
+DB_NAME=jobtracker
+
+# Alternative: If using Ollama cloud service, uncomment and configure:
+OLLAMA_HOST=https://ollama.com
+OLLAMA_MODEL=gpt-oss:120b-cloud  
+OLLAMA_API_KEY=2a5870ffa8ab469b879ab02999b684db.28nZHl4ZWnBXzrvzWFpiJ7DT
+
+RESEND_API_KEY=re_PAfdoM9e_FQu3ZGn7hKWJ2U6iaG7BiuNf
+
+# --- NEW: GMAIL/SMTP EMAIL CONFIGURATION ---
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USERNAME=raju.boga18@gmail.com
+EMAIL_PASSWORD=pwdjrlxaxzsaxnqh
 </file>
 
 <file path="src/backend/resolvers/job_resolvers.py">
@@ -5493,282 +5941,6 @@ def resolve_add_skills_to_user(obj, info, UserID, skills):
     return user_repo.to_user_output(updated_user)
 </file>
 
-<file path="src/backend/resolvers/application_resolvers.py">
-# src/backend/resolvers/application_resolvers.py
-from datetime import datetime
-from ariadne import QueryType, MutationType, ObjectType
-from ..db import next_application_id, to_application_output
-from ..validators.common_validators import clean_update_input
-from ..repository import user_repo, job_repo, application_repo
-from ..services import email_service
-import threading
-
-query = QueryType()
-mutation = MutationType()
-application = ObjectType("Application")
-job = ObjectType("Job")
-
-# --- CORE WORKFLOW HELPER FUNCTIONS ---
-
-def _handle_hired_status_side_effects(job_id, hired_user_id):
-    """
-    This function runs in a background thread to:
-    1. Close the job.
-    2. Notify all other unsuccessful applicants.
-    """
-    print(f"Triggering side-effects for hired status on job {job_id}...")
-    job_repo.update_one_job({"jobId": job_id}, {"status": "Closed"})
-    
-    # Find all other applications for this job (excluding the hired user)
-    other_apps = application_repo.find_applications({"jobId": job_id, "userId": {"$ne": hired_user_id}})
-    job = job_repo.find_job_by_id(job_id)
-    if not job: 
-        print(f"ERROR: Could not find job {job_id} for rejection emails.")
-        return
-
-    for app in other_apps:
-        # Only notify if status is Applied or Interviewing (i.e., not already Rejected)
-        if app.get("status") in ["Applied", "Interviewing"]:
-            candidate = user_repo.find_one_by_id(app["userId"])
-            if candidate:
-                email_service.send_rejection_notification(
-                    to_email=candidate["email"], candidate_name=candidate["firstName"],
-                    job_title=job["title"], company=job["company"]
-                )
-                # OPTIONAL: Mark them as Rejected so they don't get processed again
-                application_repo.update_one_application({"appId": app["appId"]}, {"status": "Rejected"})
-                
-    print("Hired status side-effects complete. Job is Closed, mass rejections sent.")
-
-# --- FIELD RESOLVERS ---
-
-@job.field("applicants")
-@job.field("applicants")
-def resolve_job_applicants(job_obj, info):
-    job_id = job_obj.get("jobId")
-    if not job_id: return []
-    
-    # 1. Find all applications for the job
-    applications = application_repo.find_applications({"jobId": job_id})
-    if not applications: return []
-    
-    # 2. Get all unique UserIDs
-    user_ids = [app.get("userId") for app in applications]
-    user_id_to_status = {app.get("userId"): app.get("status") for app in applications} # Map for status lookup
-    if not user_ids: return []
-    
-    # 3. Fetch User documents
-    applicant_docs = user_repo.find_users({"UserID": {"$in": user_ids}}, None, None)
-    
-    # 4. Attach status and format output
-    output_users = []
-    for doc in applicant_docs:
-        user_output = user_repo.to_user_output(doc)
-        # --- NEW: Inject application status into the User object for display ---
-        user_output['applicationStatus'] = user_id_to_status.get(doc.get("UserID"), 'Applied') 
-        output_users.append(user_output)
-        
-    return output_users # Now each User object has an 'applicationStatus' field
-    
-@job.field("applicationCount")
-def resolve_job_application_count(job_obj, info):
-    job_id = job_obj.get("jobId")
-    if not job_id: return 0
-    return application_repo.count_applications({"jobId": job_id})
-
-@query.field("applications")
-def resolve_applications(obj, info, userId=None, jobId=None, status=None):
-    q = {}
-    # Security: If Applicant is requesting, restrict to their ID unless an ID is explicitly passed
-    if info.context.get("user_role") == "Applicant" and not userId:
-        userId = info.context.get("UserID")
-    
-    if userId: q["userId"] = int(userId)
-    if jobId: q["jobId"] = int(jobId)
-    if status: q["status"] = status
-    
-    docs = application_repo.find_applications(q)
-    return [to_application_output(d) for d in docs]
-
-@query.field("applicationById")
-def resolve_application_by_id(*_, appId):
-    doc = application_repo.find_application_by_id(int(appId))
-    if not doc: raise ValueError(f"Application with ID {appId} not found.")
-    return to_application_output(doc)
-
-@application.field("candidate")
-def resolve_application_candidate(app_obj, _):
-    return user_repo.to_user_output(user_repo.find_one_by_id(app_obj.get("userId")))
-
-@application.field("job")
-def resolve_application_job(app_obj, _):
-    return job_repo.to_job_output(job_repo.find_job_by_id(app_obj.get("jobId")))
-
-# --- MUTATIONS ---
-
-@mutation.field("createApplication")
-def resolve_create_application(*_, input):
-    user_id, job_id = input.get("userId"), input.get("jobId")
-    if not user_repo.find_one_by_id(user_id): raise ValueError(f"Validation failed: User with ID {user_id} does not exist.")
-    if not job_repo.find_job_by_id(job_id): raise ValueError(f"Validation failed: Job with ID {job_id} does not exist.")
-    
-    # Check for duplicate application
-    existing_app = application_repo.find_applications({"userId": user_id, "jobId": job_id})
-    if existing_app:
-         raise ValueError(f"Duplicate application: This user has already applied to this job (AppID: {existing_app[0]['appId']}).")
-
-    doc = {
-        "appId": next_application_id(), "userId": user_id, "jobId": job_id,
-        "status": "Applied", "submittedAt": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-        "notes": input.get("notes"),
-        # Denormalized fields are passed from resolve_apply and correctly inserted
-        "userName": input.get("userName"),
-        "jobTitle": input.get("jobTitle"),
-        "companyName": input.get("companyName"),
-    }
-    application_repo.insert_application(doc)
-    return to_application_output(doc)
-
-@mutation.field("apply")
-def resolve_apply(obj, info, userName, jobTitle, companyName=None):
-    name_parts = userName.strip().split()
-    first_name, last_name = (name_parts[0], " ".join(name_parts[1:])) if len(name_parts) > 1 else (name_parts[0], None)
-    if not first_name: raise ValueError("User name cannot be empty.")
-
-    # 1. FIND USER
-    user_filter = user_repo.build_filter(first_name, last_name, None, None)
-    matching_users = user_repo.find_users(user_filter, None, None)
-    if len(matching_users) == 0: raise ValueError(f"Could not find a user named '{userName}'.")
-    if len(matching_users) > 1: raise ValueError(f"Found multiple users named '{userName}'. Please be more specific.")
-    user = matching_users[0]
-    
-    # 2. FIND JOB
-    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
-    matching_jobs = job_repo.find_jobs(job_filter, None, None)
-    if len(matching_jobs) == 0: raise ValueError(f"Could not find a job with title '{jobTitle}' at company '{companyName or ''}'.")
-    if len(matching_jobs) > 1: raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
-    job = matching_jobs[0]
-
-    # 3. BUILD AND PASS DENORMALIZED INPUT
-    application_input = {
-        "userId": user["UserID"], 
-        "jobId": job["jobId"],
-        "userName": f"{user['firstName']} {user['lastName']}".strip(), 
-        "jobTitle": job["title"],                                     
-        "companyName": job["company"]                                 
-    }
-    return resolve_create_application(None, info, input=application_input)
-
-@mutation.field("updateApplication")
-def resolve_update_application(obj, info, appId, input):
-    set_fields = clean_update_input(input)
-    if not set_fields: raise ValueError("No fields provided to update.")
-    updated = application_repo.update_one_application({"appId": int(appId)}, set_fields)
-    if not updated: raise ValueError(f"Application with ID {appId} not found for update.")
-    return to_application_output(updated)
-
-@mutation.field("updateApplicationStatusByNames")
-def resolve_update_application_status_by_names(obj, info, userName, jobTitle, newStatus, companyName=None):
-    # --- AUTHORIZATION ---
-    user_role = info.context.get("user_role")
-    if user_role != "Recruiter": raise ValueError("Permission denied: You must be a Recruiter to update an application.")
-    
-    # --- FIND THE SINGLE TARGET APPLICATION ---
-    application_filter = {"userName": userName, "jobTitle": jobTitle}
-    if companyName: application_filter["companyName"] = companyName
-    
-    apps = application_repo.find_applications(application_filter)
-    if not apps: 
-        raise ValueError(f"No application found for '{userName}' at job '{jobTitle}' at company '{companyName or ''}'.")
-    if len(apps) > 1: 
-        raise ValueError("Found multiple matching applications. Please be more specific.")
-    
-    target_app_id = apps[0]["appId"]
-    # --- END FIND LOGIC ---
-
-    # --- UPDATE STATUS ---
-    updated_app = application_repo.update_one_application({"appId": target_app_id}, {"status": newStatus})
-    if not updated_app: raise ValueError("Failed to update application status.")
-
-    # --- TRIGGER SIDE-EFFECTS (Email, Job Closure) ---
-    candidate = user_repo.find_one_by_id(updated_app["userId"])
-    job = job_repo.find_job_by_id(updated_app["jobId"])
-
-    if newStatus == "Interviewing" and candidate and job:
-        email_service.send_interview_invitation(
-            to_email=candidate["email"], candidate_name=candidate["firstName"],
-            job_title=job["title"], company=job["company"]
-        )
-    
-    if newStatus == "Hired" and candidate and job:
-        thread = threading.Thread(target=_handle_hired_status_side_effects, args=(job["jobId"], candidate["UserID"]))
-        thread.start()
-
-    return to_application_output(updated_app)
-
-@mutation.field("addNoteToApplicationByJob")
-def resolve_add_note_to_application_by_job(obj, info, jobTitle, note, companyName=None):
-    # --- AUTHORIZATION (Implicit Applicant) ---
-    user_id = info.context.get("UserID")
-    if not user_id: raise ValueError("Permission denied: You must be logged in to add a note.")
-    
-    # 1. FIND JOB
-    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
-    jobs = job_repo.find_jobs(job_filter, None, None)
-    if not jobs: raise ValueError(f"Could not find job with title '{jobTitle}'.")
-    if len(jobs) > 1: raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
-
-    # 2. FIND APPLICANT'S APPLICATION
-    application_filter = {"userId": user_id, "jobId": jobs[0]["jobId"]}
-    apps = application_repo.find_applications(application_filter)
-    if not apps: raise ValueError(f"You have not applied for the '{jobTitle}' job.")
-    
-    target_app_id = apps[0]["appId"]
-    
-    # 3. APPEND NOTE
-    existing_notes = apps[0].get("notes", "") or ""
-    # Applicant notes are simply appended, without a timestamp prefix
-    updated_notes = f"{existing_notes}\n{note}".strip() 
-
-    updated_app = application_repo.update_one_application({"appId": target_app_id}, {"notes": updated_notes})
-    if not updated_app: raise ValueError("Failed to add note.")
-    return to_application_output(updated_app)
-
-@mutation.field("addManagerNoteToApplication")
-def resolve_add_manager_note_to_application(obj, info, userName, jobTitle, note, companyName=None):
-    # --- AUTHORIZATION ---
-    user_role = info.context.get("user_role")
-    if user_role != "Recruiter": raise ValueError("Permission denied: You must be a Recruiter to add a note.")
-    
-    # --- FIND THE SINGLE TARGET APPLICATION ---
-    application_filter = {"userName": userName, "jobTitle": jobTitle}
-    if companyName: application_filter["companyName"] = companyName
-
-    apps = application_repo.find_applications(application_filter)
-    if not apps: raise ValueError(f"No application found for user '{userName}' at job '{jobTitle}'.")
-    if len(apps) > 1: raise ValueError("Found multiple matching applications. Please be more specific.")
-    
-    target_app_id = apps[0]["appId"]
-    # --- END FIND LOGIC ---
-    
-    # --- APPEND NOTE ---
-    existing_notes = apps[0].get("notes", "") or ""
-    timestamp = datetime.utcnow().strftime('%Y-%m-%d')
-    new_note = f"\n--- Recruiter Note ({timestamp}): {note}"
-    updated_notes = existing_notes.strip() + new_note
-
-    updated_app = application_repo.update_one_application({"appId": target_app_id}, {"notes": updated_notes})
-    if not updated_app: raise ValueError("Failed to add note.")
-    return to_application_output(updated_app)
-
-# --- Ensure correct Query object is exposed for ariadne schema build ---
-@query.field("applicationById")
-def resolve_application_by_id(*_, appId):
-    doc = application_repo.find_application_by_id(int(appId))
-    if not doc: raise ValueError(f"Application with ID {appId} not found.")
-    return to_application_output(doc)
-</file>
-
 <file path="src/frontend-react/src/ResultsDisplay.js">
 // src/frontend-react/src/ResultsDisplay.js
 import React, { useState } from 'react';
@@ -5964,249 +6136,302 @@ const StatusBadge = ({ status }) => {
 export default ResultsDisplay;
 </file>
 
-<file path="src/backend/app.py">
-# src/backend/app.py
-import os
-import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-
-import bcrypt
-import requests
-from flask_cors import CORS
-from flask import Flask, jsonify, request
-from ariadne import load_schema_from_path, make_executable_schema, graphql_sync
-from ariadne.explorer import ExplorerGraphiQL
-from dotenv import load_dotenv
-from werkzeug.exceptions import HTTPException
+<file path="src/backend/resolvers/application_resolvers.py">
+# src/backend/resolvers/application_resolvers.py
 from datetime import datetime
+from ariadne import QueryType, MutationType, ObjectType
+from ..db import next_application_id, to_application_output
+from ..validators.common_validators import clean_update_input
+from ..repository import user_repo, job_repo, application_repo
+from ..services import email_service
+import threading
+import logging # <-- NEW IMPORT
 
-from src.backend.services import resume_parser_service 
-from src.backend.models.user_models import UserProfileType
-from src.backend.errors import handle_http_exception, handle_value_error, handle_generic_exception, json_error
-from src.backend.services.nl2gql_service import process_nl2gql_request
-from src.backend.repository import user_repo, application_repo # Added application_repo for upload endpoint
-from src.backend.db import ensure_user_counter, ensure_job_counter, ensure_application_counter, next_user_id
-from werkzeug.utils import secure_filename
+logger = logging.getLogger(__name__) # <-- NEW LOGGER INSTANCE
 
-# Import resolvers
-from src.backend.resolvers.user_resolvers import query as user_query, mutation as user_mutation
-from src.backend.resolvers.job_resolvers import query as job_query, mutation as job_mutation
-# --- FIX 1: Import the 'job' ObjectType from the application resolvers ---
-from src.backend.resolvers.application_resolvers import query as app_query, mutation as app_mutation, application as application_object, job
+query = QueryType()
+mutation = MutationType()
+application = ObjectType("Application")
+job = ObjectType("Job")
 
-# Load environment variables
-load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
+# --- CORE WORKFLOW HELPER FUNCTIONS ---
 
-# --- Flask app setup ---
-app = Flask(__name__)
-CORS(app)
-explorer_html = ExplorerGraphiQL().html(None)
-
-# --- Load GraphQL schema ---
-schema_path = os.path.join(os.path.dirname(__file__), "schema.graphql")
-type_defs = load_schema_from_path(schema_path)
-schema = make_executable_schema(
-    type_defs,
-    [user_query, job_query, app_query],
-    [user_mutation, job_mutation, app_mutation],
-    application_object,
-    job  # --- FIX 2: Pass the imported 'job' ObjectType to the schema builder ---
-)
-
-# Initialize database counters
-ensure_user_counter()
-ensure_job_counter()
-ensure_application_counter()
-
-# --- Error Handlers ---
-@app.errorhandler(HTTPException)
-def http_error(e): return handle_http_exception(e)
-@app.errorhandler(ValueError)
-def value_error(e): return handle_value_error(e)
-@app.errorhandler(Exception)
-def unhandled_exception(e): return handle_generic_exception(e)
-
-# --- GraphQL endpoints ---
-@app.route("/graphql", methods=["GET"])
-def graphql_explorer(): return explorer_html, 200
-@app.route("/graphql", methods=["POST"])
-def graphql_server():
-    data = request.get_json(silent=True)
-    user_role = request.headers.get("X-User-Role", "Applicant")
-    user_id = request.headers.get("X-User-ID")
-    first_name = request.headers.get("X-User-FirstName", "")
-    last_name = request.headers.get("X-User-LastName", "")
+def _handle_hired_status_side_effects(job_id, hired_user_id):
+    """
+    This function runs in a background thread to:
+    1. Close the job.
+    2. Notify all other unsuccessful applicants.
+    """
+    print(f"Triggering side-effects for hired status on job {job_id}...")
+    job_repo.update_one_job({"jobId": job_id}, {"status": "Closed"})
     
-    # Build context with user information
-    context = {
-        "request": request, 
-        "user_role": user_role
+    # Find all other applications for this job (excluding the hired user)
+    other_apps = application_repo.find_applications({"jobId": job_id, "userId": {"$ne": hired_user_id}})
+    job = job_repo.find_job_by_id(job_id)
+    if not job: 
+        print(f"ERROR: Could not find job {job_id} for rejection emails.")
+        return
+
+    for app in other_apps:
+        # Only notify if status is Applied or Interviewing (i.e., not already Rejected)
+        if app.get("status") in ["Applied", "Interviewing"]:
+            candidate = user_repo.find_one_by_id(app["userId"])
+            if candidate:
+                email_service.send_rejection_notification(
+                    to_email=candidate["email"], candidate_name=candidate["firstName"],
+                    job_title=job["title"], company=job["company"],
+                    app_id=app["appId"] # Correctly passes app_id
+                )
+                # OPTIONAL: Mark them as Rejected so they don't get processed again
+                application_repo.update_one_application({"appId": app["appId"]}, {"status": "Rejected"})
+                
+    print("Hired status side-effects complete. Job is Closed, mass rejections sent.")
+
+# --- FIELD RESOLVERS ---
+@job.field("applicants") 
+def resolve_job_applicants(job_obj, info):
+    job_id = job_obj.get("jobId")
+    if not job_id: return []
+    
+    # 1. Find all applications for the job
+    applications = application_repo.find_applications({"jobId": job_id})
+    if not applications: return []
+    
+    # 2. Get all unique UserIDs
+    user_ids = [app.get("userId") for app in applications]
+    user_id_to_status = {app.get("userId"): app.get("status") for app in applications} # Map for status lookup
+    if not user_ids: return []
+    
+    # 3. Fetch User documents
+    applicant_docs = user_repo.find_users({"UserID": {"$in": user_ids}}, None, None)
+    
+    # 4. Attach status and format output
+    output_users = []
+    for doc in applicant_docs:
+        user_output = user_repo.to_user_output(doc)
+        # --- NEW: Inject application status into the User object for display ---
+        user_output['applicationStatus'] = user_id_to_status.get(doc.get("UserID"), 'Applied') 
+        output_users.append(user_output)
+        
+    return output_users # Now each User object has an 'applicationStatus' field
+    
+@job.field("applicationCount")
+def resolve_job_application_count(job_obj, info):
+    job_id = job_obj.get("jobId")
+    if not job_id: return 0
+    return application_repo.count_applications({"jobId": job_id})
+
+@query.field("applications")
+def resolve_applications(obj, info, userId=None, jobId=None, status=None):
+    q = {}
+    # Security: If Applicant is requesting, restrict to their ID unless an ID is explicitly passed
+    if info.context.get("user_role") == "Applicant" and not userId:
+        userId = info.context.get("UserID")
+    
+    if userId: q["userId"] = int(userId)
+    if jobId: q["jobId"] = int(jobId)
+    if status: q["status"] = status
+    
+    docs = application_repo.find_applications(q)
+    return [to_application_output(d) for d in docs]
+
+@query.field("applicationById")
+def resolve_application_by_id(*_, appId):
+    doc = application_repo.find_application_by_id(int(appId))
+    if not doc: raise ValueError(f"Application with ID {appId} not found.")
+    return to_application_output(doc)
+
+@application.field("candidate")
+def resolve_application_candidate(app_obj, _):
+    return user_repo.to_user_output(user_repo.find_one_by_id(app_obj.get("userId")))
+
+@application.field("job")
+def resolve_application_job(app_obj, _):
+    return job_repo.to_job_output(job_repo.find_job_by_id(app_obj.get("jobId")))
+
+# --- MUTATIONS ---
+
+@mutation.field("createApplication")
+def resolve_create_application(*_, input):
+    user_id, job_id = input.get("userId"), input.get("jobId")
+    if not user_repo.find_one_by_id(user_id): raise ValueError(f"Validation failed: User with ID {user_id} does not exist.")
+    if not job_repo.find_job_by_id(job_id): raise ValueError(f"Validation failed: Job with ID {job_id} does not exist.")
+    
+    # Check for duplicate application
+    existing_app = application_repo.find_applications({"userId": user_id, "jobId": job_id})
+    if existing_app:
+         raise ValueError(f"Duplicate application: This user has already applied to this job (AppID: {existing_app[0]['appId']}).")
+
+    doc = {
+        "appId": next_application_id(), "userId": user_id, "jobId": job_id,
+        "status": "Applied", "submittedAt": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "notes": input.get("notes"),
+        # Denormalized fields are passed from resolve_apply and correctly inserted
+        "userName": input.get("userName"),
+        "jobTitle": input.get("jobTitle"),
+        "companyName": input.get("companyName"),
     }
+    application_repo.insert_application(doc)
+    return to_application_output(doc)
+
+@mutation.field("apply")
+def resolve_apply(obj, info, userName, jobTitle, companyName=None):
+    name_parts = userName.strip().split()
+    first_name, last_name = (name_parts[0], " ".join(name_parts[1:])) if len(name_parts) > 1 else (name_parts[0], None)
+    if not first_name: raise ValueError("User name cannot be empty.")
+
+    # 1. FIND USER
+    user_filter = user_repo.build_filter(first_name, last_name, None, None)
+    matching_users = user_repo.find_users(user_filter, None, None)
+    if len(matching_users) == 0: raise ValueError(f"Could not find a user named '{userName}'.")
+    if len(matching_users) > 1: raise ValueError(f"Found multiple users named '{userName}'. Please be more specific.")
+    user = matching_users[0]
     
-    # Add user details to context if UserID is provided
-    if user_id:
-        try:
-            context["UserID"] = int(user_id)
-            context["firstName"] = first_name
-            context["lastName"] = last_name
-        except ValueError:
-            pass  # Invalid UserID, skip adding to context
-            
-    # DEBUG LOGGING
-    print(f"DEBUG: Incoming Headers - X-User-ID: {user_id}, Role: {user_role}")
-    print(f"DEBUG: Constructed Context keys: {list(context.keys())}")
-    if "UserID" in context:
-        print(f"DEBUG: Context UserID: {context['UserID']}")
+    # 2. FIND JOB
+    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
+    matching_jobs = job_repo.find_jobs(job_filter, None, None)
+    if len(matching_jobs) == 0: raise ValueError(f"Could not find a job with title '{jobTitle}' at company '{companyName or ''}'.")
+    if len(matching_jobs) > 1: raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
+    job = matching_jobs[0]
+
+    # 3. BUILD AND PASS DENORMALIZED INPUT
+    application_input = {
+        "userId": user["UserID"], 
+        "jobId": job["jobId"],
+        "userName": f"{user['firstName']} {user['lastName']}".strip(), 
+        "jobTitle": job["title"],                                     
+        "companyName": job["company"]                                 
+    }
+    return resolve_create_application(None, info, input=application_input)
+
+@mutation.field("updateApplication")
+def resolve_update_application(obj, info, appId, input):
+    set_fields = clean_update_input(input)
+    if not set_fields: raise ValueError("No fields provided to update.")
+    updated = application_repo.update_one_application({"appId": int(appId)}, set_fields)
+    if not updated: raise ValueError(f"Application with ID {appId} not found for update.")
+    return to_application_output(updated)
+
+@mutation.field("updateApplicationStatusByNames")
+def resolve_update_application_status_by_names(obj, info, userName, jobTitle, newStatus, companyName=None):
+    # --- AUTHORIZATION ---
+    user_role = info.context.get("user_role")
+    if user_role != "Recruiter": 
+        logger.warning(f"Permission denied: Non-Recruiter attempted status update for {userName}")
+        raise ValueError("Permission denied: You must be a Recruiter to update an application.")
     
-    success, result = graphql_sync(
-        schema, 
-        data, 
-        context_value=context, 
-        debug=app.debug
-    )
-    return jsonify(result), (200 if success else 400)
+    # --- FIND THE SINGLE TARGET APPLICATION ---
+    application_filter = {"userName": userName, "jobTitle": jobTitle}
+    if companyName: application_filter["companyName"] = companyName
+    
+    apps = application_repo.find_applications(application_filter)
+    if not apps: 
+        logger.warning(f"Application not found for {userName} at {jobTitle} ({companyName or 'any'}).")
+        raise ValueError(f"No application found for '{userName}' at job '{jobTitle}' at company '{companyName or ''}'.")
+    if len(apps) > 1: 
+        logger.warning(f"Ambiguous application update for {userName} at {jobTitle}. Matches: {len(apps)}")
+        raise ValueError("Found multiple matching applications. Please be more specific.")
+    
+    target_app_id = apps[0]["appId"]
+    logger.debug(f"DEBUG_A: Found application {target_app_id}. Status being set to '{newStatus}'")
 
-# --- Health check ---
-@app.route("/")
-def health(): return jsonify({"status": "Backend is running!"}), 200
+    # --- UPDATE STATUS ---
+    updated_app = application_repo.update_one_application({"appId": target_app_id}, {"status": newStatus})
+    if not updated_app: 
+        logger.error(f"Failed to update application {target_app_id} status to {newStatus}.")
+        raise ValueError("Failed to update application status.")
 
-# --- File Upload Endpoint ---
-RESUME_FOLDER = os.path.join(os.path.dirname(__file__), 'resumes')
-ALLOWED_EXTENSIONS = {'pdf', 'docx'}
-if not os.path.exists(RESUME_FOLDER):
-    os.makedirs(RESUME_FOLDER)
+    logger.debug("DEBUG_B: Status successfully updated in DB.")
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    # --- TRIGGER SIDE-EFFECTS (Email, Job Closure) ---
+    candidate = user_repo.find_one_by_id(updated_app["userId"])
+    job = job_repo.find_job_by_id(updated_app["jobId"])
 
-@app.route("/applications/<int:appId>/resume", methods=["POST"])
-def upload_resume(appId):
-    if 'resume' not in request.files: return jsonify({"error": "No resume file part in the request"}), 400
-    file = request.files['resume']
-    if file.filename == '': return jsonify({"error": "No selected file"}), 400
-    if file and allowed_file(file.filename):
-        application = application_repo.find_application_by_id(appId)
-        if not application: return jsonify({"error": "Application not found"}), 404
-        user_id = application.get("userId")
-        filename = f"user_{user_id}_app_{appId}_{secure_filename(file.filename)}"
-        file_path = os.path.join(RESUME_FOLDER, filename)
-        file.save(file_path)
-        resume_url = f"/resumes/{filename}"
-        application_repo.update_one_application({"appId": appId}, {"resume_url": resume_url})
-        try:
-            resume_parser_service.parse_resume_and_update_user(file_path, user_id)
-        except Exception as e:
-            print(f"Error triggering resume parsing: {e}")
-        return jsonify({"message": "Resume uploaded successfully!", "resume_url": resume_url}), 200
-    return jsonify({"error": "File type not allowed"}), 400
-
-# --- NL2GQL Endpoint ---
-@app.route("/nl2gql", methods=["POST"])
-def nl2gql():
-    data = request.get_json(silent=True) or {}
-    user_text = data.get("query", "")
-    user_context = data.get("userContext")
-    run_graphql = request.args.get("run", "true").lower() != "false"
-    with open(schema_path, "r", encoding="utf-8") as f: schema_sdl = f.read()
-    def execute_graphql_query(gql_data):
-        user_role = request.headers.get("X-User-Role", "Applicant")
-        user_id = request.headers.get("X-User-ID")
-        first_name = request.headers.get("X-User-FirstName", "")
-        last_name = request.headers.get("X-User-LastName", "")
-        
-        context = {
-            "request": request, 
-            "user_role": user_role, 
-            "user": user_context
-        }
-        
-        if user_id:
-            try:
-                context["UserID"] = int(user_id)
-                context["firstName"] = first_name
-                context["lastName"] = last_name
-            except ValueError:
-                pass
-
-        return graphql_sync(
-            schema, gql_data, 
-            context_value=context, 
-            debug=app.debug
+    # --- FIX: Use .lower().startswith('interview') for safety ---
+    if newStatus.lower().startswith("interview") and candidate and job:
+        logger.debug("DEBUG_C: Initiating send_interview_invitation.")
+        email_service.send_interview_invitation(
+            to_email=candidate["email"], candidate_name=candidate["firstName"],
+            job_title=job["title"], company=job["company"],
+            app_id=updated_app["appId"] 
         )
-    payload, status_code = process_nl2gql_request(user_text, schema_sdl, run_graphql, execute_graphql_query, user_context)
-    return jsonify(payload), status_code
-
-# --- User Authentication Endpoints ---
-@app.route("/register", methods=["POST"])
-def register_user():
-    # ... (all existing validation logic is the same)
-    data = request.get_json()
-    email, password, first_name, last_name, role = data.get("email"), data.get("password"), data.get("firstName"), data.get("lastName"), data.get("role")
-    if not all([email, password, first_name, last_name, role]): return jsonify({"error": "Missing required fields"}), 400
-    # ... (role validation, existing user check, password hashing are the same)
-
-    new_user_doc = {
-        "UserID": next_user_id(), "email": email.lower(), "password": bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()),
-        "firstName": first_name, "lastName": last_name, "role": role, "phone_number": None, "city": None,
-        "state_province": None, "country": None, "linkedin_profile": None, "portfolio_url": None,
-        "highest_qualification": None, "years_of_experience": None, "createdAt": datetime.utcnow().isoformat(),
-        "dob": None, "skills": [], "professionalTitle": None, "is_us_citizen": None, "highest_degree_year": None
-    }
     
-    try:
-        user_repo.insert_user(new_user_doc)
-        # --- THE CHANGE: Return the new UserID on success ---
-        return jsonify({
-            "message": "User registered successfully!",
-            "UserID": new_user_doc["UserID"]
-        }), 201
-    except Exception as e:
-        return jsonify({"error": f"An internal error occurred: {e}"}), 500
-
-# --- NEW User-Profile Resume Upload Endpoint ---
-@app.route("/users/<int:user_id>/resume", methods=["POST"])
-def upload_profile_resume(user_id):
-    if 'resume' not in request.files: return jsonify({"error": "No resume file part"}), 400
-    file = request.files['resume']
-    if file.filename == '': return jsonify({"error": "No selected file"}), 400
-
-    if file and allowed_file(file.filename):
-        # Verify the user exists
-        user = user_repo.find_one_by_id(user_id)
-        if not user:
-            return jsonify({"error": "User not found"}), 404
+    if newStatus.lower() == "hired" and candidate and job: # <-- FIX: Checking for 'hired' (long form)
+        # Send confirmation/offer email to the hired candidate and audit success
+        offer_subject = f"Job Offer for {job['title']} at {job['company']}"
+        offer_body = f"<p>Congratulations {candidate['firstName']}, we are delighted to offer you the position!</p><p>Details will follow shortly.</p>"
         
-        filename = f"user_{user_id}_profile_{secure_filename(file.filename)}"
-        file_path = os.path.join(RESUME_FOLDER, filename)
-        file.save(file_path)
-        
-        # Trigger the parsing service (this can be slow, ideally a background job)
-        try:
-            resume_parser_service.parse_resume_and_update_user(file_path, user_id)
-        except Exception as e:
-            print(f"Error triggering profile resume parsing: {e}")
+        # We call the internal helper directly to send the email and audit
+        if email_service._send_email(candidate["email"], offer_subject, offer_body): 
+            email_service._audit_email_success(updated_app["appId"], "Hired")
 
-        return jsonify({"message": "Resume uploaded and parsing initiated."}), 200
+        logger.debug("DEBUG_D: Starting background thread for mass rejection.")
+        thread = threading.Thread(target=_handle_hired_status_side_effects, args=(job["jobId"], candidate["UserID"]))
+        thread.start()
+    logger.debug(f"DEBUG_D: Final resolver output for App {target_app_id}.")
+    return to_application_output(updated_app)
 
-    return jsonify({"error": "File type not allowed"}), 400
-   
-@app.route("/login", methods=["POST"])
-def login_user():
-    data = request.get_json()
-    if not data: return jsonify({"error": "Invalid JSON body"}), 400
-    email, password = data.get("email"), data.get("password")
-    if not email or not password: return jsonify({"error": "Email and password are required"}), 400
-    user = user_repo.find_user_by_email(email)
-    if not user: return jsonify({"error": "Invalid email or password"}), 401
-    if bcrypt.checkpw(password.encode('utf-8'), user.get("password")):
-        user_data = user_repo.to_user_output(user)
-        return jsonify({"message": "Login successful!", "user": user_data}), 200
-    else:
-        return jsonify({"error": "Invalid email or password"}), 401
+@mutation.field("addNoteToApplicationByJob")
+def resolve_add_note_to_application_by_job(obj, info, jobTitle, note, companyName=None):
+    # --- AUTHORIZATION (Implicit Applicant) ---
+    user_id = info.context.get("UserID")
+    if not user_id: raise ValueError("Permission denied: You must be logged in to add a note.")
+    
+    # 1. FIND JOB
+    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
+    jobs = job_repo.find_jobs(job_filter, None, None)
+    if not jobs: raise ValueError(f"Could not find job with title '{jobTitle}'.")
+    if len(jobs) > 1: raise ValueError(f"Found multiple jobs with title '{jobTitle}'. Please specify a company.")
 
-if __name__ == "__main__":
-    print("🚀 Starting Flask server on http://localhost:8000 ...")
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    # 2. FIND APPLICANT'S APPLICATION
+    application_filter = {"userId": user_id, "jobId": jobs[0]["jobId"]}
+    apps = application_repo.find_applications(application_filter)
+    if not apps: raise ValueError(f"You have not applied for the '{jobTitle}' job.")
+    
+    target_app_id = apps[0]["appId"]
+    
+    # 3. APPEND NOTE
+    existing_notes = apps[0].get("notes", "") or ""
+    # Applicant notes are simply appended, without a timestamp prefix
+    updated_notes = f"{existing_notes}\n{note}".strip() 
+
+    updated_app = application_repo.update_one_application({"appId": target_app_id}, {"notes": updated_notes})
+    if not updated_app: raise ValueError("Failed to add note.")
+    return to_application_output(updated_app)
+
+@mutation.field("addManagerNoteToApplication")
+def resolve_add_manager_note_to_application(obj, info, userName, jobTitle, note, companyName=None):
+    # --- AUTHORIZATION ---
+    user_role = info.context.get("user_role")
+    if user_role != "Recruiter": raise ValueError("Permission denied: You must be a Recruiter to add a note.")
+    
+    # --- FIND THE SINGLE TARGET APPLICATION ---
+    application_filter = {"userName": userName, "jobTitle": jobTitle}
+    if companyName: application_filter["companyName"] = companyName
+
+    apps = application_repo.find_applications(application_filter)
+    if not apps: raise ValueError(f"No application found for user '{userName}' at job '{jobTitle}'.")
+    if len(apps) > 1: raise ValueError("Found multiple matching applications. Please be more specific.")
+    
+    target_app_id = apps[0]["appId"]
+    # --- END FIND LOGIC ---
+    
+    # --- APPEND NOTE ---
+    existing_notes = apps[0].get("notes", "") or ""
+    timestamp = datetime.utcnow().strftime('%Y-%m-%d')
+    new_note = f"\n--- Recruiter Note ({timestamp}): {note}"
+    updated_notes = existing_notes.strip() + new_note
+
+    updated_app = application_repo.update_one_application({"appId": target_app_id}, {"notes": updated_notes})
+    if not updated_app: raise ValueError("Failed to add note.")
+    return to_application_output(updated_app)
+
+# --- Ensure correct Query object is exposed for ariadne schema build ---
+@query.field("applicationById")
+def resolve_application_by_id(*_, appId):
+    doc = application_repo.find_application_by_id(int(appId))
+    if not doc: raise ValueError(f"Application with ID {appId} not found.")
+    return to_application_output(doc)
 </file>
 
 <file path="src/backend/services/nl2gql_service.py">
@@ -6398,6 +6623,272 @@ def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, g
         return wrapped_error 
 
     return {"graphql": gql, "result": result}, (200 if success else 400)
+</file>
+
+<file path="src/backend/app.py">
+# src/backend/app.py
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+import logging 
+
+import bcrypt
+import requests
+from flask_cors import CORS
+from flask import Flask, jsonify, request
+from ariadne import load_schema_from_path, make_executable_schema, graphql_sync
+from ariadne.explorer import ExplorerGraphiQL
+from dotenv import load_dotenv
+from werkzeug.exceptions import HTTPException
+from datetime import datetime
+
+from src.backend.services import resume_parser_service 
+from src.backend.models.user_models import UserProfileType
+from src.backend.errors import handle_http_exception, handle_value_error, handle_generic_exception, json_error
+from src.backend.services.nl2gql_service import process_nl2gql_request
+from src.backend.repository import user_repo, application_repo # Added application_repo for upload endpoint
+from src.backend.db import ensure_user_counter, ensure_job_counter, ensure_application_counter, ensure_interview_counter, next_user_id
+from werkzeug.utils import secure_filename
+
+# Import resolvers
+from src.backend.resolvers.user_resolvers import query as user_query, mutation as user_mutation
+from src.backend.resolvers.job_resolvers import query as job_query, mutation as job_mutation
+# --- FIX 1: Import the 'job' ObjectType from the application resolvers ---
+from src.backend.resolvers.application_resolvers import query as app_query, mutation as app_mutation, application as application_object, job
+
+# --- NEW: Import Scheduling Resolvers ---
+from src.backend.resolvers.scheduling_resolvers import query as scheduling_query, mutation as scheduling_mutation, interview as interview_object
+
+# Load environment variables
+load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
+
+# --- Flask app setup ---
+app = Flask(__name__)
+CORS(app)
+explorer_html = ExplorerGraphiQL().html(None)
+
+# Configure basic logging to console
+logging.basicConfig(
+    level=logging.DEBUG, # Set to DEBUG for maximum output during debugging
+    format='%(asctime)s - %(levelname)s - %(threadName)s - %(message)s'
+)
+logger = logging.getLogger('FLASK_APP') # Create a main logger instance
+# --- NEW: Suppress Verbose MongoDB Logging ---
+logging.getLogger('pymongo').setLevel(logging.WARNING)
+logging.getLogger('pymongo.server_monitoring').setLevel(logging.WARNING)
+
+# --- Load GraphQL schema ---
+schema_path = os.path.join(os.path.dirname(__file__), "schema.graphql")
+type_defs = load_schema_from_path(schema_path)
+schema = make_executable_schema(
+    type_defs,
+    [user_query, job_query, app_query, scheduling_query],
+    [user_mutation, job_mutation, app_mutation, scheduling_mutation],
+    application_object,
+    job,  # --- FIX 2: Pass the imported 'job' ObjectType to the schema builder ---
+    interview_object
+)
+
+# Initialize database counters
+ensure_user_counter()
+ensure_job_counter()
+ensure_application_counter()
+ensure_interview_counter()
+
+# --- Error Handlers ---
+@app.errorhandler(HTTPException)
+def http_error(e): return handle_http_exception(e)
+@app.errorhandler(ValueError)
+def value_error(e): return handle_value_error(e)
+@app.errorhandler(Exception)
+def unhandled_exception(e): return handle_generic_exception(e)
+
+# --- GraphQL endpoints ---
+@app.route("/graphql", methods=["GET"])
+def graphql_explorer(): return explorer_html, 200
+@app.route("/graphql", methods=["POST"])
+def graphql_server():
+    data = request.get_json(silent=True)
+    user_role = request.headers.get("X-User-Role", "Applicant")
+    user_id = request.headers.get("X-User-ID")
+    first_name = request.headers.get("X-User-FirstName", "")
+    last_name = request.headers.get("X-User-LastName", "")
+    logger.debug(f"Incoming Headers - X-User-ID: {user_id}, Role: {user_role}")
+    logger.debug(f"Constructed Context keys: {list(context.keys())}")
+
+    
+    # Build context with user information
+    context = {
+        "request": request, 
+        "user_role": user_role
+    }
+    
+    # Add user details to context if UserID is provided
+    if user_id:
+        try:
+            context["UserID"] = int(user_id)
+            context["firstName"] = first_name
+            context["lastName"] = last_name
+        except ValueError:
+            pass  # Invalid UserID, skip adding to context
+            
+    # DEBUG LOGGING
+    print(f"DEBUG: Incoming Headers - X-User-ID: {user_id}, Role: {user_role}")
+    print(f"DEBUG: Constructed Context keys: {list(context.keys())}")
+    if "UserID" in context:
+        print(f"DEBUG: Context UserID: {context['UserID']}")
+        logger.debug(f"Context UserID: {context['UserID']}")
+    
+    success, result = graphql_sync(
+        schema, 
+        data, 
+        context_value=context, 
+        debug=app.debug
+    )
+    logger.debug(f"result: {result}")
+    return jsonify(result), (200 if success else 400)
+
+# --- Health check ---
+@app.route("/")
+def health(): return jsonify({"status": "Backend is running!"}), 200
+
+# --- File Upload Endpoint ---
+RESUME_FOLDER = os.path.join(os.path.dirname(__file__), 'resumes')
+ALLOWED_EXTENSIONS = {'pdf', 'docx'}
+if not os.path.exists(RESUME_FOLDER):
+    os.makedirs(RESUME_FOLDER)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route("/applications/<int:appId>/resume", methods=["POST"])
+def upload_resume(appId):
+    if 'resume' not in request.files: return jsonify({"error": "No resume file part in the request"}), 400
+    file = request.files['resume']
+    if file.filename == '': return jsonify({"error": "No selected file"}), 400
+    if file and allowed_file(file.filename):
+        application = application_repo.find_application_by_id(appId)
+        if not application: return jsonify({"error": "Application not found"}), 404
+        user_id = application.get("userId")
+        filename = f"user_{user_id}_app_{appId}_{secure_filename(file.filename)}"
+        file_path = os.path.join(RESUME_FOLDER, filename)
+        file.save(file_path)
+        resume_url = f"/resumes/{filename}"
+        application_repo.update_one_application({"appId": appId}, {"resume_url": resume_url})
+        try:
+            resume_parser_service.parse_resume_and_update_user(file_path, user_id)
+        except Exception as e:
+            print(f"Error triggering resume parsing: {e}")
+        return jsonify({"message": "Resume uploaded successfully!", "resume_url": resume_url}), 200
+    return jsonify({"error": "File type not allowed"}), 400
+
+# --- NL2GQL Endpoint ---
+@app.route("/nl2gql", methods=["POST"])
+def nl2gql():
+    data = request.get_json(silent=True) or {}
+    user_text = data.get("query", "")
+    user_context = data.get("userContext")
+    run_graphql = request.args.get("run", "true").lower() != "false"
+    with open(schema_path, "r", encoding="utf-8") as f: schema_sdl = f.read()
+    def execute_graphql_query(gql_data):
+        user_role = request.headers.get("X-User-Role", "Applicant")
+        user_id = request.headers.get("X-User-ID")
+        first_name = request.headers.get("X-User-FirstName", "")
+        last_name = request.headers.get("X-User-LastName", "")
+        
+        context = {
+            "request": request, 
+            "user_role": user_role, 
+            "user": user_context
+        }
+        
+        if user_id:
+            try:
+                context["UserID"] = int(user_id)
+                context["firstName"] = first_name
+                context["lastName"] = last_name
+            except ValueError:
+                pass
+
+        return graphql_sync(
+            schema, gql_data, 
+            context_value=context, 
+            debug=app.debug
+        )
+    payload, status_code = process_nl2gql_request(user_text, schema_sdl, run_graphql, execute_graphql_query, user_context)
+    return jsonify(payload), status_code
+
+# --- User Authentication Endpoints ---
+@app.route("/register", methods=["POST"])
+def register_user():
+    # ... (all existing validation logic is the same)
+    data = request.get_json()
+    email, password, first_name, last_name, role = data.get("email"), data.get("password"), data.get("firstName"), data.get("lastName"), data.get("role")
+    if not all([email, password, first_name, last_name, role]): return jsonify({"error": "Missing required fields"}), 400
+    # ... (role validation, existing user check, password hashing are the same)
+
+    new_user_doc = {
+        "UserID": next_user_id(), "email": email.lower(), "password": bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()),
+        "firstName": first_name, "lastName": last_name, "role": role, "phone_number": None, "city": None,
+        "state_province": None, "country": None, "linkedin_profile": None, "portfolio_url": None,
+        "highest_qualification": None, "years_of_experience": None, "createdAt": datetime.utcnow().isoformat(),
+        "dob": None, "skills": [], "professionalTitle": None, "is_us_citizen": None, "highest_degree_year": None
+    }
+    
+    try:
+        user_repo.insert_user(new_user_doc)
+        # --- THE CHANGE: Return the new UserID on success ---
+        return jsonify({
+            "message": "User registered successfully!",
+            "UserID": new_user_doc["UserID"]
+        }), 201
+    except Exception as e:
+        return jsonify({"error": f"An internal error occurred: {e}"}), 500
+
+# --- NEW User-Profile Resume Upload Endpoint ---
+@app.route("/users/<int:user_id>/resume", methods=["POST"])
+def upload_profile_resume(user_id):
+    if 'resume' not in request.files: return jsonify({"error": "No resume file part"}), 400
+    file = request.files['resume']
+    if file.filename == '': return jsonify({"error": "No selected file"}), 400
+
+    if file and allowed_file(file.filename):
+        # Verify the user exists
+        user = user_repo.find_one_by_id(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        filename = f"user_{user_id}_profile_{secure_filename(file.filename)}"
+        file_path = os.path.join(RESUME_FOLDER, filename)
+        file.save(file_path)
+        
+        # Trigger the parsing service (this can be slow, ideally a background job)
+        try:
+            resume_parser_service.parse_resume_and_update_user(file_path, user_id)
+        except Exception as e:
+            print(f"Error triggering profile resume parsing: {e}")
+
+        return jsonify({"message": "Resume uploaded and parsing initiated."}), 200
+
+    return jsonify({"error": "File type not allowed"}), 400
+   
+@app.route("/login", methods=["POST"])
+def login_user():
+    data = request.get_json()
+    if not data: return jsonify({"error": "Invalid JSON body"}), 400
+    email, password = data.get("email"), data.get("password")
+    if not email or not password: return jsonify({"error": "Email and password are required"}), 400
+    user = user_repo.find_user_by_email(email)
+    if not user: return jsonify({"error": "Invalid email or password"}), 401
+    if bcrypt.checkpw(password.encode('utf-8'), user.get("password")):
+        user_data = user_repo.to_user_output(user)
+        return jsonify({"message": "Login successful!", "user": user_data}), 200
+    else:
+        return jsonify({"error": "Invalid email or password"}), 401
+
+if __name__ == "__main__":
+    print("🚀 Starting Flask server on http://localhost:8000 ...")
+    app.run(host="0.0.0.0", port=8000, debug=True)
 </file>
 
 <file path="src/frontend-react/src/App.js">
@@ -6692,6 +7183,7 @@ type Application {
   userName: String
   jobTitle: String
   companyName: String
+  emailSent: String # Track email status
 }
 input ApplicationInput {
   userId: Int!
@@ -6701,6 +7193,35 @@ input ApplicationInput {
 input ApplicationUpdateInput {
   status: String
   notes: String
+}
+
+"""
+Represents a single block of a recruiter's weekly availability.
+"""
+type AvailabilitySlot {
+  dayOfWeek: String! # e.g., "Monday", "Tuesday"
+  startTime: String! # e.g., "09:00"
+  endTime: String!   # e.g., "17:00"
+}
+
+input AvailabilityInput {
+  dayOfWeek: String!
+  startTime: String!
+  endTime: String!
+}
+
+"""
+Represents a confirmed interview booking.
+"""
+type Interview {
+  interviewId: Int!
+  jobId: Int!
+  candidateId: Int!
+  recruiterId: Int!
+  startTime: String! # ISO 8601 UTC timestamp
+  endTime: String!   # ISO 8601 UTC timestamp
+  job: Job           # <-- Field Resolver will fetch job details
+  candidate: User    # <-- Field Resolver will fetch candidate details
 }
 
 type Query {
@@ -6726,6 +7247,10 @@ type Query {
   jobById(jobId: Int!): Job
   applications(userId: Int, jobId: Int, status: String): [Application!]!
   applicationById(appId: Int!): Application
+  """
+  Fetches the weekly availability schedule for the logged-in recruiter.
+  """
+  mySchedule: [AvailabilitySlot!]
 }
 
 type Mutation {
@@ -6768,6 +7293,17 @@ type Mutation {
     companyName: String
     note: String!
   ): Application
+
+  """
+  Sets the recurring weekly availability for the logged-in recruiter.
+  This will overwrite any existing schedule.
+  """
+  setMyAvailability(availability: [AvailabilityInput!]!): Boolean!
+
+  """
+  Books a new interview slot. The system performs a final conflict check before booking.
+  """
+  bookInterview(jobId: Int!, candidateId: Int!, startTime: String!, endTime: String!): Interview
 }
 </file>
 

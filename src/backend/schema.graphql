@@ -117,6 +117,35 @@ input ApplicationUpdateInput {
   notes: String
 }
 
+"""
+Represents a single block of a recruiter's weekly availability.
+"""
+type AvailabilitySlot {
+  dayOfWeek: String! # e.g., "Monday", "Tuesday"
+  startTime: String! # e.g., "09:00"
+  endTime: String!   # e.g., "17:00"
+}
+
+input AvailabilityInput {
+  dayOfWeek: String!
+  startTime: String!
+  endTime: String!
+}
+
+"""
+Represents a confirmed interview booking.
+"""
+type Interview {
+  interviewId: Int!
+  jobId: Int!
+  candidateId: Int!
+  recruiterId: Int!
+  startTime: String! # ISO 8601 UTC timestamp
+  endTime: String!   # ISO 8601 UTC timestamp
+  job: Job           # <-- Field Resolver will fetch job details
+  candidate: User    # <-- Field Resolver will fetch candidate details
+}
+
 type Query {
   users(
     limit: Int
@@ -140,6 +169,10 @@ type Query {
   jobById(jobId: Int!): Job
   applications(userId: Int, jobId: Int, status: String): [Application!]!
   applicationById(appId: Int!): Application
+  """
+  Fetches the weekly availability schedule for the logged-in recruiter.
+  """
+  mySchedule: [AvailabilitySlot!]
 }
 
 type Mutation {
@@ -182,4 +215,15 @@ type Mutation {
     companyName: String
     note: String!
   ): Application
+
+  """
+  Sets the recurring weekly availability for the logged-in recruiter.
+  This will overwrite any existing schedule.
+  """
+  setMyAvailability(availability: [AvailabilityInput!]!): Boolean!
+
+  """
+  Books a new interview slot. The system performs a final conflict check before booking.
+  """
+  bookInterview(jobId: Int!, candidateId: Int!, startTime: String!, endTime: String!): Interview
 }

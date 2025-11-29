@@ -28,6 +28,14 @@ def counters_collection():
     return _db["counters"]
 
 
+# --- NEW: Scheduling Collections ---
+def schedules_collection():
+    return _db["schedules"]
+
+def interviews_collection():
+    return _db["interviews"]
+
+
 # --- Counters (User, Job, and new Application counter) ---
 def _ensure_counter(counter_id: str):
     counters_collection().update_one(
@@ -62,6 +70,14 @@ def ensure_application_counter(): # New
 
 def next_application_id(): # New
     return _next_id("appId")
+
+
+# --- NEW: Interview Counters ---
+def ensure_interview_counter():
+    _ensure_counter("interviewId")
+
+def next_interview_id():
+    return _next_id("interviewId")
 
 
 # --- Output Formatting (no changes to user/job, new for application) ---

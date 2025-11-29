@@ -19,7 +19,7 @@ from src.backend.models.user_models import UserProfileType
 from src.backend.errors import handle_http_exception, handle_value_error, handle_generic_exception, json_error
 from src.backend.services.nl2gql_service import process_nl2gql_request
 from src.backend.repository import user_repo, application_repo # Added application_repo for upload endpoint
-from src.backend.db import ensure_user_counter, ensure_job_counter, ensure_application_counter, next_user_id
+from src.backend.db import ensure_user_counter, ensure_job_counter, ensure_application_counter, ensure_interview_counter, next_user_id
 from werkzeug.utils import secure_filename
 
 # Import resolvers
@@ -27,6 +27,9 @@ from src.backend.resolvers.user_resolvers import query as user_query, mutation a
 from src.backend.resolvers.job_resolvers import query as job_query, mutation as job_mutation
 # --- FIX 1: Import the 'job' ObjectType from the application resolvers ---
 from src.backend.resolvers.application_resolvers import query as app_query, mutation as app_mutation, application as application_object, job
+
+# --- NEW: Import Scheduling Resolvers ---
+from src.backend.resolvers.scheduling_resolvers import query as scheduling_query, mutation as scheduling_mutation, interview as interview_object
 
 # Load environment variables
 load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
@@ -51,16 +54,18 @@ schema_path = os.path.join(os.path.dirname(__file__), "schema.graphql")
 type_defs = load_schema_from_path(schema_path)
 schema = make_executable_schema(
     type_defs,
-    [user_query, job_query, app_query],
-    [user_mutation, job_mutation, app_mutation],
+    [user_query, job_query, app_query, scheduling_query],
+    [user_mutation, job_mutation, app_mutation, scheduling_mutation],
     application_object,
-    job  # --- FIX 2: Pass the imported 'job' ObjectType to the schema builder ---
+    job,  # --- FIX 2: Pass the imported 'job' ObjectType to the schema builder ---
+    interview_object
 )
 
 # Initialize database counters
 ensure_user_counter()
 ensure_job_counter()
 ensure_application_counter()
+ensure_interview_counter()
 
 # --- Error Handlers ---
 @app.errorhandler(HTTPException)

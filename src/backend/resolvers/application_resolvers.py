@@ -208,9 +208,8 @@ def resolve_update_application_status_by_names(obj, info, userName, jobTitle, ne
     candidate = user_repo.find_one_by_id(updated_app["userId"])
     job = job_repo.find_job_by_id(updated_app["jobId"])
 
-    if newStatus.lower() == "interview" and candidate and job:
-        # CRITICAL: We remove the try/except blocks around this call 
-        # (if any were there) and let the exception propagate.
+    # --- FIX: Use .lower().startswith('interview') for safety ---
+    if newStatus.lower().startswith("interview") and candidate and job:
         logger.debug("DEBUG_C: Initiating send_interview_invitation.")
         email_service.send_interview_invitation(
             to_email=candidate["email"], candidate_name=candidate["firstName"],
@@ -218,7 +217,7 @@ def resolve_update_application_status_by_names(obj, info, userName, jobTitle, ne
             app_id=updated_app["appId"] 
         )
     
-    if newStatus.lower() == "hire" and candidate and job:
+    if newStatus.lower() == "hired" and candidate and job: # <-- FIX: Checking for 'hired' (long form)
         # Send confirmation/offer email to the hired candidate and audit success
         offer_subject = f"Job Offer for {job['title']} at {job['company']}"
         offer_body = f"<p>Congratulations {candidate['firstName']}, we are delighted to offer you the position!</p><p>Details will follow shortly.</p>"
