@@ -147,3 +147,41 @@
     color: #a5d6a7;
     border-color: #2e7d32;
 }
+
+/* --- Decision Buttons (Hire/Reject) --- */
+.action-area {
+    margin-top: 15px;
+    width: 100%;
+}
+
+.decision-buttons {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
+
+.decision-btn {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 0.95em;
+    transition: transform 0.1s, filter 0.2s;
+}
+
+.decision-btn:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.1);
+}
+
+.hire-btn {
+    background-color: #2e7d32; /* Green */
+    color: white;
+}
+
+.reject-btn {
+    background-color: #c62828; /* Red */
+    color: white;
+}

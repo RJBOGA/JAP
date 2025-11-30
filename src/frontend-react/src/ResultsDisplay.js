@@ -1,5 +1,6 @@
 // src/frontend-react/src/ResultsDisplay.js
 import React, { useState } from 'react';
+import apiClient from './api'; // <--- IMPORT THIS
 import './ResultsDisplay.css';
 
 // A small helper component to render a single Job
@@ -19,91 +20,133 @@ const JobResult = ({ job }) => (
 );
 
 // An enhanced component to render a single, detailed User profile
-const UserResult = ({ user, onInviteClick }) => {
-    
-    // --- NEW LOGIC: Determine if button should be disabled ---
-    const status = user.applicationStatus ? user.applicationStatus.toLowerCase() : '';
-    const isScheduled = status.includes('interview') || status === 'hired';
+const UserResult = ({ user, onInviteClick, currentUserRole }) => {
+    // Local state to update UI immediately after clicking Hire/Reject
+    const [localStatus, setLocalStatus] = useState(user.applicationStatus);
+    const [loading, setLoading] = useState(false);
+
+    // Normalize status
+    const status = localStatus ? localStatus.toLowerCase() : '';
+    const isScheduled = status.includes('interview');
+    const isHired = status === 'hired';
     const isRejected = status === 'rejected';
-    
+
+    // Time Check Logic
+    let isInterviewPassed = false;
     let buttonText = 'Schedule Interview';
-    
+
     if (isScheduled) {
         if (user.interviewTime) {
-            // Format: "Mon, Dec 1 at 10:00 AM"
-            const date = new Date(user.interviewTime);
-            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
-            const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            const interviewDate = new Date(user.interviewTime);
+            const now = new Date();
+            if (now > interviewDate) {
+                isInterviewPassed = true;
+            }
+            const dateStr = interviewDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const timeStr = interviewDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
             buttonText = `✅ Interview: ${dateStr} at ${timeStr}`;
         } else {
             buttonText = '✅ Interview Scheduled';
         }
     }
-    
+    if (isHired) buttonText = '🎉 Hired';
     if (isRejected) buttonText = '❌ Rejected';
-    // -------------------------------------------------------
+
+    // --- NEW: Handle Hire/Reject Clicks ---
+    const handleDecision = async (newStatus) => {
+        if (!window.confirm(`Are you sure you want to mark this candidate as ${newStatus}? This will send an email.`)) return;
+        
+        setLoading(true);
+        try {
+            await apiClient.post('/graphql', {
+                query: `
+                  mutation UpdateStatus($userName: String!, $jobTitle: String!, $newStatus: String!) {
+                    updateApplicationStatusByNames(
+                      userName: $userName,
+                      jobTitle: $jobTitle,
+                      newStatus: $newStatus
+                    ) {
+                      status
+                    }
+                  }
+                `,
+                variables: {
+                    userName: `${user.firstName} ${user.lastName}`,
+                    jobTitle: user.jobTitle,
+                    newStatus: newStatus
+                }
+            });
+            setLocalStatus(newStatus);
+        } catch (err) {
+            alert("Failed to update status. Check console.");
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+    // --------------------------------------
+
+    // --- NEW: Security Check ---
+    const isRecruiter = currentUserRole === 'Recruiter';
 
     return (
         <div className="result-item">
+            {/* Header / Info Sections (Same as before) */}
             <div className="item-header">
                 <span className="item-title">{user.firstName} {user.lastName}</span>
-                {user.applicationStatus && <StatusBadge status={user.applicationStatus} />}
+                {localStatus && <StatusBadge status={localStatus} />} 
                 {user.is_us_citizen && <span className="citizen-badge">✅ US Citizen</span>}
                 <span className="item-location">{user.city && user.country ? `${user.city}, ${user.country}` : ''}</span>
             </div>
-            <div className="item-subtitle">{user.professionalTitle || 'No professional title provided'}</div>
             
-            {user.years_of_experience != null && (
-                <div className="item-detail">
-                    <strong>Experience:</strong> {user.years_of_experience} years
-                </div>
-            )}
-            {user.highest_qualification && (
-                <div className="item-detail">
-                    <strong>Qualification:</strong> {user.highest_qualification}
-                </div>
-            )}
+            <div className="item-subtitle">{user.professionalTitle || '------------'}</div>
 
+            {/* Skills & Details (Same as before) */}
+            {user.years_of_experience != null && <div><strong>Experience:</strong> {user.years_of_experience} years</div>}
+            {user.highest_qualification && <div><strong>Qualification:</strong> {user.highest_qualification}</div>}
+            
             {user.skills && user.skills.length > 0 && (
                 <div className="item-skills">
                     {user.skills.map(skill => <span key={skill} className="skill-tag">{skill}</span>)}
                 </div>
             )}
 
-            <div className="item-links">
-                {user.linkedin_profile && <a href={user.linkedin_profile} target="_blank" rel="noopener noreferrer">LinkedIn</a>}
-                {user.portfolio_url && <a href={user.portfolio_url} target="_blank" rel="noopener noreferrer">Portfolio</a>}
-                
-                {/* --- NEW: Resume Link --- */}
-                {user.resume_url && (
-                    <a 
-                        href={`http://localhost:8000${user.resume_url}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="resume-link"
-                    >
-                        📄 View Resume
-                    </a>
-                )}
-                {/* ------------------------ */}
-            </div>
+            
+                        <div className="item-links">
+                            {user.linkedin_profile && <a href={user.linkedin_profile} target="_blank" rel="noopener noreferrer">LinkedIn</a>}
+                            {user.portfolio_url && <a href={user.portfolio_url} target="_blank" rel="noopener noreferrer">Portfolio</a>}
+                            {user.resume_url ? (
+                                <a href={`http://localhost:8000${user.resume_url}`} target="_blank" rel="noopener noreferrer" className="resume-link">📄 View Resume</a>
+                            ) : (
+                                <span className="no-resume">No Resume</span>
+                            )}
+                        </div>
 
-            {/* --- UPDATED BUTTON LOGIC --- */}
-            {onInviteClick && user.jobId && user.UserID ? (
-                 <button 
-                     className={`action-button ${isScheduled || isRejected ? 'disabled-button' : 'invite-button'}`}
-                     disabled={isScheduled || isRejected}
-                     onClick={() => onInviteClick(
-                         user.UserID, 
-                         user.jobId,
-                         `${user.firstName} ${user.lastName}`,
-                         user.jobTitle
-                     )}
-                 >
-                     {buttonText}
-                 </button>
-            ) : null}
-            {/* ------------------------------------------ */}
+                        {/* --- ACTION AREA: ONLY SHOW FOR RECRUITERS --- */}
+            {isRecruiter && (
+                <div className="action-area">
+                    {isScheduled && isInterviewPassed && !loading ? (
+                        <div className="decision-buttons">
+                            <button className="decision-btn hire-btn" onClick={() => handleDecision("Hired")}>
+                                🎉 Hire
+                            </button>
+                            <button className="decision-btn reject-btn" onClick={() => handleDecision("Rejected")}>
+                                ❌ Reject
+                            </button>
+                        </div>
+                    ) : (
+                        onInviteClick && user.jobId && user.UserID && (
+                            <button 
+                                className={`action-button ${isScheduled || isRejected || isHired ? 'disabled-button' : 'invite-button'}`}
+                                disabled={isScheduled || isRejected || isHired || loading}
+                                onClick={() => onInviteClick(user.UserID, user.jobId, `${user.firstName} ${user.lastName}`, user.jobTitle)}
+                            >
+                                {loading ? 'Updating...' : buttonText}
+                            </button>
+                        )
+                    )}
+                </div>
+            )}
         </div>
     );
 };
@@ -125,7 +168,7 @@ const ApplicationResult = ({ app }) => (
 );
 
 
-const ResultsDisplay = ({ rawGql, rawJson, onInviteClick }) => {
+const ResultsDisplay = ({ rawGql, rawJson, onInviteClick, currentUserRole }) => {
   const [detailsVisible, setDetailsVisible] = useState(false);
 
   let resultsContent = null;

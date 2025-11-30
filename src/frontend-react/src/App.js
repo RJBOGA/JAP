@@ -139,7 +139,12 @@ function ChatPage() {
         {messages.map((m, index) => (
           <div key={index} className={`message ${m.role}-message`}>
             {m.type === 'results' ? (
-              <ResultsDisplay rawGql={m.payload.rawGql} rawJson={m.payload.rawJson} onInviteClick={handleInitiateScheduling} />
+              <ResultsDisplay 
+                rawGql={m.payload.rawGql} 
+                rawJson={m.payload.rawJson} 
+                onInviteClick={handleInitiateScheduling}
+                currentUserRole={user.role}
+              />
             ) : (
               <div
                 className="message-bubble"

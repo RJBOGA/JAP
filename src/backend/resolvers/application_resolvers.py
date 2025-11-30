@@ -243,6 +243,17 @@ def resolve_update_application_status_by_names(obj, info, userName, jobTitle, ne
         logger.debug("DEBUG_D: Starting background thread for mass rejection.")
         thread = threading.Thread(target=_handle_hired_status_side_effects, args=(job["jobId"], candidate["UserID"]))
         thread.start()
+
+    # 3. NEW: Manual Rejection (Send Email Immediately)
+    if newStatus.lower() == "rejected" and candidate and job:
+        logger.debug(f"Sending rejection email to {candidate['email']}")
+        email_service.send_rejection_notification(
+            to_email=candidate["email"], 
+            candidate_name=candidate["firstName"],
+            job_title=job["title"], 
+            company=job["company"],
+            app_id=updated_app["appId"]
+        )
     logger.debug(f"DEBUG_D: Final resolver output for App {target_app_id}.")
     return to_application_output(updated_app)
 
