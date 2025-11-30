@@ -7,11 +7,15 @@ import ResultsDisplay from './ResultsDisplay';
 import apiClient from './api';
 import ResumeUploader from './ResumeUploader'; // Import the new uploader component
 import CompleteProfilePage from './CompleteProfilePage';
+import SchedulingPanel from './SchedulingPanel';
 
 function ChatPage() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [uploadTarget, setUploadTarget] = useState(null); // State to trigger the uploader UI
+  // --- NEW: Scheduling State ---
+  const [schedulingTarget, setSchedulingTarget] = useState(null); // {candidateId, jobId, candidateName, jobTitle}
+  // -----------------------------
 
   // --- This effect checks for a valid, non-expired session on component load ---
   useEffect(() => {
@@ -56,6 +60,11 @@ function ChatPage() {
 
   const formatContentForDisplay = (content) => {
     return content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  };
+
+  // --- NEW: Function to initiate scheduling from a component (like ResultsDisplay) ---
+  const handleInitiateScheduling = (candidateId, jobId, candidateName, jobTitle) => {
+    setSchedulingTarget({ candidateId, jobId, candidateName, jobTitle });
   };
 
   const handleSend = async (e) => {
@@ -130,7 +139,7 @@ function ChatPage() {
         {messages.map((m, index) => (
           <div key={index} className={`message ${m.role}-message`}>
             {m.type === 'results' ? (
-              <ResultsDisplay rawGql={m.payload.rawGql} rawJson={m.payload.rawJson} />
+              <ResultsDisplay rawGql={m.payload.rawGql} rawJson={m.payload.rawJson} onInviteClick={handleInitiateScheduling} />
             ) : (
               <div
                 className="message-bubble"
@@ -148,6 +157,14 @@ function ChatPage() {
           onComplete={() => setUploadTarget(null)} 
         />
       )}
+      {/* --- NEW: Scheduling Component --- */}
+      {schedulingTarget && (
+        <SchedulingPanel
+          target={schedulingTarget}
+          onClose={() => setSchedulingTarget(null)}
+          recruiterId={user.UserID}
+        />
+      )}
       
       <form onSubmit={handleSend} className="input-form">
         <input
@@ -155,9 +172,9 @@ function ChatPage() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Type a request like 'find jobs in London'..."
-          disabled={loading || !!uploadTarget} // Disable input while uploader is active
+          disabled={loading || !!uploadTarget || !!schedulingTarget} // <-- Disable input when scheduling
         />
-        <button type="submit" disabled={loading || !!uploadTarget}>
+        <button type="submit" disabled={loading || !!uploadTarget || !!schedulingTarget}>
           {loading ? '...' : 'Send'}
         </button>
       </form>

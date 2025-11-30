@@ -1,118 +1,109 @@
-from datetime import datetime, timedelta, time
-from ..repository import user_repo, job_repo
-from ..db import schedules_collection, interviews_collection, next_interview_id
-from ..repository.application_repo import update_one_application
+from datetime import datetime, timedelta
+import logging
 
-# --- Public Service Functions ---
+logger = logging.getLogger(__name__)
+
+# Helper to handle ISO strings safely
+def parse_iso(date_str):
+    if not date_str: return None
+    if date_str.endswith('Z'): date_str = date_str[:-1]
+    return datetime.fromisoformat(date_str)
 
 def set_recruiter_availability(recruiter_id: int, availability_data: list):
-	"""Creates or replaces the availability schedule for a given recruiter."""
-	# Basic validation (ensures fields exist)
-	for slot in availability_data:
-		if not all(k in slot for k in ['dayOfWeek', 'startTime', 'endTime']):
-			raise ValueError("Each availability slot must contain dayOfWeek, startTime, and endTime.")
-    
-	schedules_collection().update_one(
-		{"recruiterId": recruiter_id},
-		{"$set": {"availability": availability_data, "recruiterId": recruiter_id}},
-		upsert=True
-	)
-	return True
+    from ..db import schedules_collection
+    schedules_collection().update_one(
+        {"recruiterId": recruiter_id},
+        {"$set": {"availability": availability_data, "recruiterId": recruiter_id}},
+        upsert=True
+    )
+    return True
 
 def find_open_slots(recruiter_id: int, candidate_id: int, start_date: datetime, end_date: datetime, duration_minutes: int = 30):
-	"""
-	The core conflict-resolution algorithm.
-	Finds available interview slots for a recruiter and a candidate within a date range.
-	"""
-	# 1. Get the recruiter's general weekly availability
-	schedule = schedules_collection().find_one({"recruiterId": recruiter_id})
-	if not schedule or not schedule.get("availability"):
-		return [] # Recruiter has not set their availability
-
-	# 2. Get all existing interviews for BOTH the recruiter and the candidate
-	# NOTE: MongoDB ISO 8601 strings are sortable and comparable
-	booked_interviews = list(interviews_collection().find({
-		"$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
-		"startTime": {"$gte": start_date.isoformat()},
-		"endTime": {"$lte": end_date.isoformat()}
-	}))
+    from ..db import schedules_collection, interviews_collection
     
-	booked_slots = set()
-	for interview in booked_interviews:
-		# Convert booked slots to datetime objects for accurate comparison
-		start = datetime.fromisoformat(interview["startTime"])
-		end = datetime.fromisoformat(interview["endTime"])
-		booked_slots.add((start, end))
+    # 1. Get Schedule
+    schedule = schedules_collection().find_one({"recruiterId": recruiter_id})
+    if not schedule or not schedule.get("availability"):
+        return [] # No availability set
 
-	# 3. Iterate through each day in the date range and generate potential slots
-	open_slots = []
-	day_map = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
+    # 2. Get Bookings
+    booked = list(interviews_collection().find({
+        "$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
+        "startTime": {"$gte": start_date.isoformat()},
+        "endTime": {"$lte": end_date.isoformat()}
+    }))
     
-	current_date = start_date
-	while current_date <= end_date:
-		day_of_week = day_map[current_date.weekday()]
+    booked_slots = []
+    for b in booked:
+        try:
+            booked_slots.append((parse_iso(b.get("startTime")), parse_iso(b.get("endTime"))))
+        except: continue
+
+    # 3. Generate Slots
+    open_slots = []
+    day_map = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
+    current = start_date
+    now = datetime.utcnow()
+
+    while current <= end_date:
+        day_name = day_map[current.weekday()]
         
-		# Find if the recruiter is available on this day of the week
-		for avail_slot in schedule["availability"]:
-			if avail_slot["dayOfWeek"].lower() == day_of_week.lower():
+        for rule in schedule["availability"]:
+            if rule.get("dayOfWeek", "").lower() != day_name.lower(): continue
+            
+            try:
+                s_time = datetime.strptime(rule["startTime"], "%H:%M").time()
+                e_time = datetime.strptime(rule["endTime"], "%H:%M").time()
                 
-				# Combine current_date with time component from availability slot
-				slot_start_time = datetime.strptime(avail_slot["startTime"], "%H:%M").time()
-				slot_end_time = datetime.strptime(avail_slot["endTime"], "%H:%M").time()
-
-				potential_start = datetime.combine(current_date.date(), slot_start_time)
-				potential_end_limit = datetime.combine(current_date.date(), slot_end_time)
+                slot_start = datetime.combine(current.date(), s_time)
+                limit = datetime.combine(current.date(), e_time)
                 
-				while (potential_start + timedelta(minutes=duration_minutes)) <= potential_end_limit:
-					potential_end = potential_start + timedelta(minutes=duration_minutes)
+                while slot_start + timedelta(minutes=duration_minutes) <= limit:
+                    slot_end = slot_start + timedelta(minutes=duration_minutes)
                     
-					# 4. Check for conflicts
-					is_conflict = False
-					for booked_start, booked_end in booked_slots:
-						# Check for overlap: (StartA < EndB) and (EndA > StartB)
-						if (potential_start < booked_end) and (potential_end > booked_start):
-							is_conflict = True
-							break
+                    # Skip past slots and conflicts
+                    if slot_start > now:
+                        conflict = any(bs < slot_end and be > slot_start for bs, be in booked_slots)
+                        if not conflict:
+                            open_slots.append(slot_start.isoformat())
                     
-					if not is_conflict:
-						# Return in ISO format for consistency
-						open_slots.append(potential_start.isoformat())
-                        
-					potential_start += timedelta(minutes=duration_minutes)
+                    slot_start += timedelta(minutes=duration_minutes)
+            except Exception as e:
+                logger.error(f"Error processing slot: {e}")
+                continue
+                
+        current += timedelta(days=1)
         
-		current_date += timedelta(days=1)
-        
-	return open_slots
+    return open_slots
 
-def book_interview(job_id: int, candidate_id: int, recruiter_id: int, start_time: datetime, end_time: datetime):
-	"""Books a new interview after a final conflict check."""
+def book_interview(job_id, candidate_id, recruiter_id, start_time, end_time):
+    from ..db import interviews_collection, next_interview_id
+    from ..repository.application_repo import update_one_application
+    from ..repository import user_repo, job_repo
+    from ..services.email_service import send_interview_invitation
     
-	# Final conflict check right before booking
-	conflicts = list(interviews_collection().find({
-		"$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
-		"startTime": {"$lt": end_time.isoformat()},
-		"endTime": {"$gt": start_time.isoformat()}
-	}))
+    # Conflict Check
+    conflict = interviews_collection().find_one({
+        "$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
+        "startTime": {"$lt": end_time.isoformat()},
+        "endTime": {"$gt": start_time.isoformat()}
+    })
+    
+    if conflict: raise ValueError("Conflict detected. Slot unavailable.")
 
-	if conflicts:
-		raise ValueError("Conflict detected. This time slot is no longer available.")
+    doc = {
+        "interviewId": next_interview_id(),
+        "jobId": job_id, "candidateId": candidate_id, "recruiterId": recruiter_id,
+        "startTime": start_time.isoformat(), "endTime": end_time.isoformat()
+    }
+    interviews_collection().insert_one(doc)
+    
+    # Update Status & Email
+    app = update_one_application({"userId": candidate_id, "jobId": job_id}, {"status": "Interviewing"})
+    cand = user_repo.find_one_by_id(candidate_id)
+    job = job_repo.find_job_by_id(job_id)
+    
+    if cand and job:
+        send_interview_invitation(cand["email"], cand["firstName"], job["title"], job["company"], app["appId"] if app else 0)
         
-	interview_doc = {
-		"interviewId": next_interview_id(),
-		"jobId": job_id,
-		"candidateId": candidate_id,
-		"recruiterId": recruiter_id,
-		"startTime": start_time.isoformat(),
-		"endTime": end_time.isoformat()
-	}
-    
-	interviews_collection().insert_one(interview_doc)
-    
-	# Update application status to Interviewing/Scheduled
-	app_query = {"userId": candidate_id, "jobId": job_id}
-	update_one_application(app_query, {"status": "Interviewing"})
-    
-	# You would also trigger the email here, but we will leave the full logic 
-	# out of the service layer for now to avoid dependency cycles.
-    
-	return interview_doc
+    return doc

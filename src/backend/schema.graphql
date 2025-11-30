@@ -173,6 +173,11 @@ type Query {
   Fetches the weekly availability schedule for the logged-in recruiter.
   """
   mySchedule: [AvailabilitySlot!]
+  """
+  Finds conflict-free interview slots for the Recruiter and Candidate.
+  Returns ISO 8601 strings for available start times.
+  """
+  findAvailableSlots(candidateId: Int!, durationMinutes: Int, numDays: Int): [String!]!
 }
 
 type Mutation {

@@ -18,3 +18,5 @@ IDE files
 .vscode/
 
 /src/backend/resumes/
+/src/backend/.env/
+/src/.env/

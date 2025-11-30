@@ -86,8 +86,6 @@ def graphql_server():
     first_name = request.headers.get("X-User-FirstName", "")
     last_name = request.headers.get("X-User-LastName", "")
     logger.debug(f"Incoming Headers - X-User-ID: {user_id}, Role: {user_role}")
-    logger.debug(f"Constructed Context keys: {list(context.keys())}")
-
     
     # Build context with user information
     context = {
@@ -104,11 +102,9 @@ def graphql_server():
         except ValueError:
             pass  # Invalid UserID, skip adding to context
             
-    # DEBUG LOGGING
-    print(f"DEBUG: Incoming Headers - X-User-ID: {user_id}, Role: {user_role}")
-    print(f"DEBUG: Constructed Context keys: {list(context.keys())}")
+    # DEBUG LOGGING (moved below context creation to avoid UnboundLocalError)
+    logger.debug(f"Constructed Context keys: {list(context.keys())}")
     if "UserID" in context:
-        print(f"DEBUG: Context UserID: {context['UserID']}")
         logger.debug(f"Context UserID: {context['UserID']}")
     
     success, result = graphql_sync(

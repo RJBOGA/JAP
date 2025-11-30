@@ -89,294 +89,151 @@ src/frontend-react/src/LoginPage.js
 src/frontend-react/src/ResultsDisplay.css
 src/frontend-react/src/ResultsDisplay.js
 src/frontend-react/src/ResumeUploader.js
-test_job_modification_heavy.py
-test_updateJobByFields_heavy.py
+src/frontend-react/src/SchedulingPanel.js
 WORKFLOW_DIAGRAM.txt
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
 
-<file path="scripts/test_schedule_smoke.py">
-import os
-import sys
-from datetime import datetime, timedelta
-import traceback
-from pprint import pprint
+<file path="src/frontend-react/src/SchedulingPanel.js">
+import React, { useState, useEffect } from 'react';
+import apiClient from './api';
+import './App.css'; // Reuses styles
 
-# Ensure project root is on sys.path (same approach as other scripts)
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+const SchedulingPanel = ({ target, onClose, recruiterId }) => {
+  const [slots, setSlots] = useState(null);
+  const [status, setStatus] = useState('loading'); // loading | loaded | error | confirmed | confirming
+  const [error, setError] = useState('');
 
-from src.backend.services import scheduling_service
-from src.backend.db import applications_collection, schedules_collection, users_collection, jobs_collection, next_application_id
-
-
-def main():
-    try:
-        app = applications_collection().find_one()
-        if not app:
-            print("No application found in DB. Creating a test application...")
-            # Find a job and an applicant user to create a minimal application
-            job = jobs_collection().find_one()
-            applicant = users_collection().find_one({"role": "Applicant"})
-            if not job or not applicant:
-                print("Could not find a job or an applicant user to create a test application. Aborting.")
-                return
-            job_id = job.get("jobId")
-            candidate_id = applicant.get("UserID")
-            app_doc = {
-                "appId": next_application_id(),
-                "userId": candidate_id,
-                "jobId": job_id,
-                "status": "Applied",
-                "submittedAt": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-                "notes": "",
-                "userName": f"{applicant.get('firstName')} {applicant.get('lastName')}",
-                "jobTitle": job.get('title'),
-                "companyName": job.get('company')
+  // --- Step 1: Fetch Available Slots on Load ---
+  useEffect(() => {
+    const fetchSlots = async () => {
+      try {
+        // Query the new resolver: findAvailableSlots
+        const response = await apiClient.post('/graphql', {
+          query: `
+            query FindSlots($candidateId: Int!) {
+              findAvailableSlots(candidateId: $candidateId, durationMinutes: 30, numDays: 7)
             }
-            applications_collection().insert_one(app_doc)
-            app = app_doc
-        else:
-            job_id = app.get("jobId")
-            candidate_id = app.get("userId")
+          `,
+          variables: { candidateId: target.candidateId },
+        });
 
-        sched = schedules_collection().find_one()
-        if not sched:
-            print("No recruiter schedules found. Creating a simple schedule for an available recruiter...")
-            recruiter = users_collection().find_one({"role": "Recruiter"})
-            if not recruiter:
-                print("No recruiter user found to create a schedule. Aborting.")
-                return
-            recruiter_id = recruiter.get("UserID")
-            schedules_collection().insert_one({
-                "recruiterId": recruiter_id,
-                "availability": [
-                    {"dayOfWeek": "Monday", "startTime": "09:00", "endTime": "17:00"},
-                    {"dayOfWeek": "Tuesday", "startTime": "09:00", "endTime": "17:00"}
-                ]
-            })
-            sched = schedules_collection().find_one({"recruiterId": recruiter_id})
-        recruiter_id = sched.get("recruiterId")
+        const availableSlots = response.data.data.findAvailableSlots;
+        setSlots(availableSlots || []);
+        setStatus('loaded');
+      } catch (err) {
+        console.error("Error fetching slots:", err);
+        setError("Failed to fetch slots. Is your Recruiter availability set?");
+        setStatus('error');
+      }
+    };
+    fetchSlots();
+  }, [target.candidateId]);
 
-        print(f"Found application: appId={app.get('appId')}, jobId={job_id}, candidateId={candidate_id}")
-        print(f"Found recruiter schedule for recruiterId={recruiter_id}")
+  // --- Step 2: Book the Chosen Slot ---
+  const handleBookSlot = async (startTimeISO) => {
+    setStatus('confirming');
+    setError('');
+    const endTime = new Date(new Date(startTimeISO).getTime() + 30 * 60000).toISOString(); // Calculate +30 min
 
-        start_date = datetime.utcnow()
-        end_date = start_date + timedelta(days=7)
+    try {
+      const response = await apiClient.post('/graphql', {
+        query: `
+          mutation BookInterview($jobId: Int!, $candidateId: Int!, $startTime: String!, $endTime: String!) {
+            bookInterview(
+              jobId: $jobId,
+              candidateId: $candidateId,
+              startTime: $startTime,
+              endTime: $endTime
+            ) {
+              interviewId
+              startTime
+              candidate { firstName }
+            }
+          }
+        `,
+        variables: {
+          jobId: target.jobId,
+          candidateId: target.candidateId,
+          startTime: startTimeISO,
+          endTime: endTime,
+        },
+      });
 
-        print("Searching for open slots (next 7 days)...")
-        open_slots = scheduling_service.find_open_slots(recruiter_id, candidate_id, start_date, end_date, duration_minutes=30)
-        print(f"Open slots found: {len(open_slots)}")
-        if not open_slots:
-            print("No open slots available to book.")
-            return
+      if (response.data.errors) {
+        throw new Error(response.data.errors[0].message);
+      }
 
-        # Pick the first available slot and book
-        slot_iso = open_slots[0]
-        start_time = datetime.fromisoformat(slot_iso)
-        end_time = start_time + timedelta(minutes=30)
+      setStatus('confirmed');
+      // The email and status update are handled by the backend book_interview service now!
 
-        print(f"Attempting to book interview at {start_time.isoformat()} - {end_time.isoformat()}")
-        interview = scheduling_service.book_interview(job_id, candidate_id, recruiter_id, start_time, end_time)
-        print("Interview booked:")
-        pprint(interview)
+    } catch (err) {
+      console.error("Booking Error:", err);
+      setError(err.message && typeof err.message === 'string' && err.message.includes("Conflict detected") ? "Conflict: That slot was just booked or is unavailable!" : (err.message || 'Booking failed'));
+      setStatus('loaded'); // Return to selection screen on soft error
+    }
+  };
+  
+  // Helper to format ISO string to readable time
+  const formatTime = (isoString) => {
+    return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
 
-    except Exception as e:
-        print("Exception during smoke test:")
-        traceback.print_exc()
+  // Helper to format ISO string to readable date
+  const formatDate = (isoString) => {
+      return new Date(isoString).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  }
 
-if __name__ == '__main__':
-    main()
-</file>
+  // --- Render Logic ---
+  return (
+    <div className="scheduling-panel">
+      <h3>Schedule Interview with {target.candidateName}</h3>
+      <p>Role: {target.jobTitle}</p>
 
-<file path="src/backend/resolvers/scheduling_resolvers.py">
-from ariadne import QueryType, MutationType, ObjectType
-from datetime import datetime, timedelta
-# Lazy imports are no longer needed as the app is starting now
-from ..services import scheduling_service
-from ..repository import job_repo, user_repo
-from ..db import to_user_output
+      {status === 'loading' && <p>Searching for conflict-free slots...</p>}
+      
+      {status === 'error' && <p className="status-error">❌ {error}</p>}
 
-query = QueryType()
-mutation = MutationType()
-interview = ObjectType("Interview") 
+      {status === 'confirming' && <p>Booking selected slot...</p>}
 
-# --- Query Resolvers ---
+      {status === 'confirmed' && (
+        <div className="status-success">
+          ✅ Interview successfully booked and invitation sent!
+        </div>
+      )}
 
-@query.field("mySchedule")
-def resolve_my_schedule(_, info):
-	user_id = info.context.get("UserID")
-	user_role = info.context.get("user_role")
-	if not user_id or user_role != "Recruiter":
-		raise PermissionError("Access denied: Only a Recruiter can view their schedule.")
-    
-	schedule = scheduling_service.schedules_collection().find_one({"recruiterId": user_id}) 
-	return schedule.get("availability") if schedule else []
+      {status === 'loaded' && (
+        <>
+          <p>Select an available 30-minute slot:</p>
+          <div className="slot-list">
+            {slots && slots.length > 0 ? (
+              slots.map((slot, index) => (
+                <button
+                  key={index}
+                  className="slot-button"
+                  onClick={() => handleBookSlot(slot)}
+                >
+                  {formatDate(slot)} at {formatTime(slot)}
+                </button>
+              ))
+            ) : (
+              <p>No open slots found for the next 7 days. Please check Recruiter availability.</p>
+            )}
+          </div>
+          {error && <p className="status-error" style={{marginTop: '10px'}}>❌ {error}</p>}
+        </>
+      )}
+      
+      <button onClick={onClose} className="skip-button" style={{ marginTop: '20px' }} disabled={status === 'confirming'}>
+        {status === 'confirmed' ? 'Done' : 'Cancel'}
+      </button>
+    </div>
+  );
+};
 
-# --- Mutation Resolvers ---
-
-@mutation.field("setMyAvailability")
-def resolve_set_my_availability(_, info, availability):
-	user_id = info.context.get("UserID")
-	user_role = info.context.get("user_role")
-	if not user_id or user_role != "Recruiter":
-		raise PermissionError("Access denied: Only a Recruiter can set their availability.")
-        
-	return scheduling_service.set_recruiter_availability(user_id, availability)
-
-@mutation.field("bookInterview")
-def resolve_book_interview(_, info, jobId, candidateId, startTime, endTime):
-	# This is a Recruiter-only mutation
-	user_id = info.context.get("UserID")
-	user_role = info.context.get("user_role")
-	if not user_id or user_role != "Recruiter":
-		raise PermissionError("Access denied: Only a Recruiter can book interviews.")
-        
-	try:
-		start_time_dt = datetime.fromisoformat(startTime)
-		end_time_dt = datetime.fromisoformat(endTime)
-	except ValueError:
-		raise ValueError("Invalid time format. Use ISO 8601 format.")
-    
-	booked_interview = scheduling_service.book_interview(
-		job_id=jobId,
-		candidate_id=candidateId,
-		recruiter_id=user_id,
-		start_time=start_time_dt,
-		end_time=end_time_dt
-	)
-	return booked_interview
-
-# --- Field resolvers for the Interview type ---
-@interview.field("job")
-def resolve_interview_job(interview_obj, _):
-	return job_repo.to_job_output(job_repo.find_job_by_id(interview_obj.get("jobId")))
-
-@interview.field("candidate")
-def resolve_interview_candidate(interview_obj, _):
-	return user_repo.to_user_output(user_repo.find_one_by_id(interview_obj.get("candidateId")))
-</file>
-
-<file path="src/backend/services/scheduling_service.py">
-from datetime import datetime, timedelta, time
-from ..repository import user_repo, job_repo
-from ..db import schedules_collection, interviews_collection, next_interview_id
-from ..repository.application_repo import update_one_application
-
-# --- Public Service Functions ---
-
-def set_recruiter_availability(recruiter_id: int, availability_data: list):
-	"""Creates or replaces the availability schedule for a given recruiter."""
-	# Basic validation (ensures fields exist)
-	for slot in availability_data:
-		if not all(k in slot for k in ['dayOfWeek', 'startTime', 'endTime']):
-			raise ValueError("Each availability slot must contain dayOfWeek, startTime, and endTime.")
-    
-	schedules_collection().update_one(
-		{"recruiterId": recruiter_id},
-		{"$set": {"availability": availability_data, "recruiterId": recruiter_id}},
-		upsert=True
-	)
-	return True
-
-def find_open_slots(recruiter_id: int, candidate_id: int, start_date: datetime, end_date: datetime, duration_minutes: int = 30):
-	"""
-	The core conflict-resolution algorithm.
-	Finds available interview slots for a recruiter and a candidate within a date range.
-	"""
-	# 1. Get the recruiter's general weekly availability
-	schedule = schedules_collection().find_one({"recruiterId": recruiter_id})
-	if not schedule or not schedule.get("availability"):
-		return [] # Recruiter has not set their availability
-
-	# 2. Get all existing interviews for BOTH the recruiter and the candidate
-	# NOTE: MongoDB ISO 8601 strings are sortable and comparable
-	booked_interviews = list(interviews_collection().find({
-		"$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
-		"startTime": {"$gte": start_date.isoformat()},
-		"endTime": {"$lte": end_date.isoformat()}
-	}))
-    
-	booked_slots = set()
-	for interview in booked_interviews:
-		# Convert booked slots to datetime objects for accurate comparison
-		start = datetime.fromisoformat(interview["startTime"])
-		end = datetime.fromisoformat(interview["endTime"])
-		booked_slots.add((start, end))
-
-	# 3. Iterate through each day in the date range and generate potential slots
-	open_slots = []
-	day_map = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
-    
-	current_date = start_date
-	while current_date <= end_date:
-		day_of_week = day_map[current_date.weekday()]
-        
-		# Find if the recruiter is available on this day of the week
-		for avail_slot in schedule["availability"]:
-			if avail_slot["dayOfWeek"].lower() == day_of_week.lower():
-                
-				# Combine current_date with time component from availability slot
-				slot_start_time = datetime.strptime(avail_slot["startTime"], "%H:%M").time()
-				slot_end_time = datetime.strptime(avail_slot["endTime"], "%H:%M").time()
-
-				potential_start = datetime.combine(current_date.date(), slot_start_time)
-				potential_end_limit = datetime.combine(current_date.date(), slot_end_time)
-                
-				while (potential_start + timedelta(minutes=duration_minutes)) <= potential_end_limit:
-					potential_end = potential_start + timedelta(minutes=duration_minutes)
-                    
-					# 4. Check for conflicts
-					is_conflict = False
-					for booked_start, booked_end in booked_slots:
-						# Check for overlap: (StartA < EndB) and (EndA > StartB)
-						if (potential_start < booked_end) and (potential_end > booked_start):
-							is_conflict = True
-							break
-                    
-					if not is_conflict:
-						# Return in ISO format for consistency
-						open_slots.append(potential_start.isoformat())
-                        
-					potential_start += timedelta(minutes=duration_minutes)
-        
-		current_date += timedelta(days=1)
-        
-	return open_slots
-
-def book_interview(job_id: int, candidate_id: int, recruiter_id: int, start_time: datetime, end_time: datetime):
-	"""Books a new interview after a final conflict check."""
-    
-	# Final conflict check right before booking
-	conflicts = list(interviews_collection().find({
-		"$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
-		"startTime": {"$lt": end_time.isoformat()},
-		"endTime": {"$gt": start_time.isoformat()}
-	}))
-
-	if conflicts:
-		raise ValueError("Conflict detected. This time slot is no longer available.")
-        
-	interview_doc = {
-		"interviewId": next_interview_id(),
-		"jobId": job_id,
-		"candidateId": candidate_id,
-		"recruiterId": recruiter_id,
-		"startTime": start_time.isoformat(),
-		"endTime": end_time.isoformat()
-	}
-    
-	interviews_collection().insert_one(interview_doc)
-    
-	# Update application status to Interviewing/Scheduled
-	app_query = {"userId": candidate_id, "jobId": job_id}
-	update_one_application(app_query, {"status": "Interviewing"})
-    
-	# You would also trigger the email here, but we will leave the full logic 
-	# out of the service layer for now to avoid dependency cycles.
-    
-	return interview_doc
+export default SchedulingPanel;
 </file>
 
 <file path="MANUAL_TESTING_GUIDE.md">
@@ -2206,6 +2063,99 @@ print("Natural language processing test complete!")
 print("="*70)
 </file>
 
+<file path="scripts/test_schedule_smoke.py">
+import os
+import sys
+from datetime import datetime, timedelta
+import traceback
+from pprint import pprint
+
+# Ensure project root is on sys.path (same approach as other scripts)
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from src.backend.services import scheduling_service
+from src.backend.db import applications_collection, schedules_collection, users_collection, jobs_collection, next_application_id
+
+
+def main():
+    try:
+        app = applications_collection().find_one()
+        if not app:
+            print("No application found in DB. Creating a test application...")
+            # Find a job and an applicant user to create a minimal application
+            job = jobs_collection().find_one()
+            applicant = users_collection().find_one({"role": "Applicant"})
+            if not job or not applicant:
+                print("Could not find a job or an applicant user to create a test application. Aborting.")
+                return
+            job_id = job.get("jobId")
+            candidate_id = applicant.get("UserID")
+            app_doc = {
+                "appId": next_application_id(),
+                "userId": candidate_id,
+                "jobId": job_id,
+                "status": "Applied",
+                "submittedAt": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                "notes": "",
+                "userName": f"{applicant.get('firstName')} {applicant.get('lastName')}",
+                "jobTitle": job.get('title'),
+                "companyName": job.get('company')
+            }
+            applications_collection().insert_one(app_doc)
+            app = app_doc
+        else:
+            job_id = app.get("jobId")
+            candidate_id = app.get("userId")
+
+        sched = schedules_collection().find_one()
+        if not sched:
+            print("No recruiter schedules found. Creating a simple schedule for an available recruiter...")
+            recruiter = users_collection().find_one({"role": "Recruiter"})
+            if not recruiter:
+                print("No recruiter user found to create a schedule. Aborting.")
+                return
+            recruiter_id = recruiter.get("UserID")
+            schedules_collection().insert_one({
+                "recruiterId": recruiter_id,
+                "availability": [
+                    {"dayOfWeek": "Monday", "startTime": "09:00", "endTime": "17:00"},
+                    {"dayOfWeek": "Tuesday", "startTime": "09:00", "endTime": "17:00"}
+                ]
+            })
+            sched = schedules_collection().find_one({"recruiterId": recruiter_id})
+        recruiter_id = sched.get("recruiterId")
+
+        print(f"Found application: appId={app.get('appId')}, jobId={job_id}, candidateId={candidate_id}")
+        print(f"Found recruiter schedule for recruiterId={recruiter_id}")
+
+        start_date = datetime.utcnow()
+        end_date = start_date + timedelta(days=7)
+
+        print("Searching for open slots (next 7 days)...")
+        open_slots = scheduling_service.find_open_slots(recruiter_id, candidate_id, start_date, end_date, duration_minutes=30)
+        print(f"Open slots found: {len(open_slots)}")
+        if not open_slots:
+            print("No open slots available to book.")
+            return
+
+        # Pick the first available slot and book
+        slot_iso = open_slots[0]
+        start_time = datetime.fromisoformat(slot_iso)
+        end_time = start_time + timedelta(minutes=30)
+
+        print(f"Attempting to book interview at {start_time.isoformat()} - {end_time.isoformat()}")
+        interview = scheduling_service.book_interview(job_id, candidate_id, recruiter_id, start_time, end_time)
+        print("Interview booked:")
+        pprint(interview)
+
+    except Exception as e:
+        print("Exception during smoke test:")
+        traceback.print_exc()
+
+if __name__ == '__main__':
+    main()
+</file>
+
 <file path="scripts/test_smtp_config.py">
 # scripts/test_smtp_config.py
 import os
@@ -2702,6 +2652,263 @@ def get_user_profile_types():
     return [e.value for e in UserProfileType]
 </file>
 
+<file path="src/backend/resolvers/scheduling_resolvers.py">
+from ariadne import QueryType, MutationType, ObjectType
+from datetime import datetime, timedelta
+from ..services import scheduling_service
+from ..repository import job_repo, user_repo
+from ..db import to_user_output
+
+query = QueryType()
+mutation = MutationType()
+interview = ObjectType("Interview") 
+
+# --- Query Resolvers ---
+
+@query.field("mySchedule")
+def resolve_my_schedule(_, info):
+	# ... (Logic remains the same) ...
+	user_id = info.context.get("UserID")
+	user_role = info.context.get("user_role")
+	if not user_id or user_role != "Recruiter":
+		raise PermissionError("Access denied: Only a Recruiter can view their schedule.")
+
+	from ..db import schedules_collection
+	schedule = schedules_collection().find_one({"recruiterId": user_id}) 
+	return schedule.get("availability") if schedule else []
+
+@query.field("findAvailableSlots")
+def resolve_find_available_slots(_, info, candidateId, durationMinutes=30, numDays=14):
+	"""
+	Finds conflict-free slots for the logged-in Recruiter and a specified Candidate.
+	"""
+	user_id = info.context.get("UserID")
+	user_role = info.context.get("user_role")
+	if not user_id or user_role != "Recruiter":
+		raise PermissionError("Access denied: Only a Recruiter can find available slots.")
+        
+	start_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+	end_date = start_date + timedelta(days=numDays)
+    
+	# Call the service's core conflict resolution function
+	slots = scheduling_service.find_open_slots(
+		recruiter_id=user_id,
+		candidate_id=candidateId,
+		start_date=start_date,
+		end_date=end_date,
+		duration_minutes=durationMinutes
+	)
+    
+	# Return slots as ISO strings (as returned by the service)
+	return slots
+
+
+# --- Mutation Resolvers ---
+@mutation.field("setMyAvailability")
+def resolve_set_my_availability(_, info, availability):
+	user_id = info.context.get("UserID")
+	user_role = info.context.get("user_role")
+	if not user_id or user_role != "Recruiter":
+		raise PermissionError("Access denied: Only a Recruiter can set their availability.")
+		
+	return scheduling_service.set_recruiter_availability(user_id, availability)
+
+@mutation.field("bookInterview")
+def resolve_book_interview(_, info, jobId, candidateId, startTime, endTime):
+	# This is a Recruiter-only mutation
+	user_id = info.context.get("UserID")
+	user_role = info.context.get("user_role")
+	if not user_id or user_role != "Recruiter":
+		raise PermissionError("Access denied: Only a Recruiter can book interviews.")
+		
+	try:
+		start_time_dt = datetime.fromisoformat(startTime)
+		end_time_dt = datetime.fromisoformat(endTime)
+	except ValueError:
+		raise ValueError("Invalid time format. Use ISO 8601 format.")
+	
+	booked_interview = scheduling_service.book_interview(
+		job_id=jobId,
+		candidate_id=candidateId,
+		recruiter_id=user_id,
+		start_time=start_time_dt,
+		end_time=end_time_dt
+	)
+	return booked_interview
+
+# --- Field resolvers for the Interview type ---
+@interview.field("job")
+def resolve_interview_job(interview_obj, _):
+	return job_repo.to_job_output(job_repo.find_job_by_id(interview_obj.get("jobId")))
+
+@interview.field("candidate")
+def resolve_interview_candidate(interview_obj, _):
+	return user_repo.to_user_output(user_repo.find_one_by_id(interview_obj.get("candidateId")))
+</file>
+
+<file path="src/backend/services/scheduling_service.py">
+from datetime import datetime, timedelta, time
+# NOTE: Use lazy imports inside functions to avoid circular dependency issues
+
+# --- Public Service Functions ---
+
+def set_recruiter_availability(recruiter_id: int, availability_data: list):
+	"""Creates or replaces the availability schedule for a given recruiter."""
+	from ..db import schedules_collection
+	
+	# Basic validation (ensures fields exist)
+	for slot in availability_data:
+		if not all(k in slot for k in ['dayOfWeek', 'startTime', 'endTime']):
+			raise ValueError("Each availability slot must contain dayOfWeek, startTime, and endTime.")
+    
+	schedules_collection().update_one(
+		{"recruiterId": recruiter_id},
+		{"$set": {"availability": availability_data, "recruiterId": recruiter_id}},
+		upsert=True
+	)
+	return True
+
+def find_open_slots(recruiter_id: int, candidate_id: int, start_date: datetime, end_date: datetime, duration_minutes: int = 30):
+	"""
+	The core conflict-resolution algorithm.
+	Finds available interview slots for a recruiter and a candidate within a date range.
+	"""
+	# --- LAZY IMPORTS FOR DB ACCESS ---
+	from ..db import schedules_collection, interviews_collection
+	# -----------------------------------
+	
+	# 1. Get the recruiter's general weekly availability
+	schedule = schedules_collection().find_one({"recruiterId": recruiter_id})
+
+	# --- FINAL DEBUG POINT (Must show schedule data) ---
+	try:
+		print(f"DEBUG_SCHED_A: Schedule retrieved for {recruiter_id}: {schedule.get('availability')}")
+	except Exception as e:
+		print(f"DEBUG_SCHED_A: Schedule retrieval caused exception: {e}")
+	# ----------------------------------------------------
+	if not schedule or not schedule.get("availability"):
+		print("DEBUG_SCHED_B: No schedule set, returning [].")
+		return [] # Recruiter has not set their availability
+
+	# 2. Get all existing interviews for BOTH the recruiter and the candidate
+	# NOTE: MongoDB ISO 8601 strings are sortable and comparable
+	booked_interviews = list(interviews_collection().find({
+		"$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
+		"startTime": {"$gte": start_date.isoformat()},
+		"endTime": {"$lte": end_date.isoformat()}
+	}))
+    
+	booked_slots = set()
+	for interview in booked_interviews:
+		# Robustly convert booked slots to datetime objects for accurate comparison
+		try:
+			s_val = interview.get("startTime")
+			e_val = interview.get("endTime")
+			if isinstance(s_val, datetime):
+				start = s_val
+			else:
+				start = datetime.fromisoformat(s_val)
+			if isinstance(e_val, datetime):
+				end = e_val
+			else:
+				end = datetime.fromisoformat(e_val)
+			booked_slots.add((start, end))
+		except (KeyError, ValueError, TypeError, AttributeError):
+			# Skip malformed or unexpected records rather than crashing
+			continue
+
+	# 3. Iterate through each day in the date range and generate potential slots
+	open_slots = []
+	day_map = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
+    
+	current_date = start_date
+	while current_date <= end_date:
+		day_of_week = day_map[current_date.weekday()]
+        
+		# Find if the recruiter is available on this day of the week
+		for avail_slot in schedule["availability"]:
+			if avail_slot["dayOfWeek"].lower() == day_of_week.lower():
+                
+				# Combine current_date with time component from availability slot
+				slot_start_time = datetime.strptime(avail_slot["startTime"], "%H:%M").time()
+				slot_end_time = datetime.strptime(avail_slot["endTime"], "%H:%M").time()
+
+				potential_start = datetime.combine(current_date.date(), slot_start_time)
+				potential_end_limit = datetime.combine(current_date.date(), slot_end_time)
+                
+				while (potential_start + timedelta(minutes=duration_minutes)) <= potential_end_limit:
+					potential_end = potential_start + timedelta(minutes=duration_minutes)
+                    
+					# 4. Check for conflicts
+					is_conflict = False
+					for booked_start, booked_end in booked_slots:
+						# Check for overlap: (StartA < EndB) and (EndA > StartB)
+						if (potential_start < booked_end) and (potential_end > booked_start):
+							is_conflict = True
+							break
+                    
+					if not is_conflict:
+						# Return in ISO format for consistency
+						open_slots.append(potential_start.isoformat())
+                        
+					potential_start += timedelta(minutes=duration_minutes)
+        
+		current_date += timedelta(days=1)
+        
+	return open_slots
+
+def book_interview(job_id: int, candidate_id: int, recruiter_id: int, start_time: datetime, end_time: datetime):
+	"""
+	Books a new interview after a final conflict check, updates application status, and sends email.
+	"""
+	# --- LAZY IMPORTS FOR DB/REPO/EMAIL ACCESS ---
+	from ..db import interviews_collection, next_interview_id
+	from ..repository.application_repo import update_one_application
+	from ..repository import user_repo, job_repo
+	from ..services.email_service import send_interview_invitation
+	# -----------------------------------------------
+    
+	# Final conflict check right before booking
+	conflicts = list(interviews_collection().find({
+		"$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
+		"startTime": {"$lt": end_time.isoformat()},
+		"endTime": {"$gt": start_time.isoformat()}
+	}))
+
+	if conflicts:
+		raise ValueError("Conflict detected. This time slot is no longer available.")
+        
+	interview_doc = {
+		"interviewId": next_interview_id(),
+		"jobId": job_id,
+		"candidateId": candidate_id,
+		"recruiterId": recruiter_id,
+		"startTime": start_time.isoformat(),
+		"endTime": end_time.isoformat()
+	}
+    
+	interviews_collection().insert_one(interview_doc)
+    
+	# 1. Update application status to Interviewing/Scheduled
+	app_query = {"userId": candidate_id, "jobId": job_id}
+	updated_app = update_one_application(app_query, {"status": "Interviewing"})
+    
+	# 2. Send email to candidate (requires user/job data)
+	candidate = user_repo.find_one_by_id(candidate_id)
+	job = job_repo.find_job_by_id(job_id)
+
+	if candidate and job:
+		send_interview_invitation(
+			to_email=candidate["email"], 
+			candidate_name=candidate["firstName"], 
+			job_title=job["title"], 
+			company=job["company"], 
+			app_id=updated_app["appId"] if updated_app else 0 
+		)
+    
+	return interview_doc
+</file>
+
 <file path="src/backend/validators/common_validators.py">
 import re
 from typing import Optional, Dict, Any
@@ -3006,1014 +3213,6 @@ const ResumeUploader = ({ target, onComplete }) => {
 export default ResumeUploader;
 </file>
 
-<file path="test_job_modification_heavy.py">
-import requests
-import json
-
-url = "http://localhost:8000/graphql"
-headers = {"X-User-Role": "Recruiter"}
-
-def run_query(query):
-    try:
-        response = requests.post(url, json={"query": query}, headers=headers)
-        return response.status_code, response.json()
-    except Exception as e:
-        return None, {"error": str(e)}
-
-def print_test(name, passed, details=""):
-    status = "[PASS]" if passed else "[FAIL]"
-    print(f"{status} {name}")
-    if details:
-        print(f"     {details}")
-
-# Track results
-total_tests = 0
-passed_tests = 0
-
-print("=" * 70)
-print("HEAVY TESTING: Conversational Job Modification")
-print("=" * 70)
-
-# ============================================================================
-# TEST SUITE 1: Basic CRUD Operations
-# ============================================================================
-print("\n[SUITE 1] Basic CRUD Operations")
-print("-" * 70)
-
-# Test 1.1: Create job without new fields
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Software Engineer"
-    company: "TechCorp"
-    location: "San Francisco"
-    salaryRange: "120k-180k"
-  }) {
-    jobId
-    title
-    requires_us_citizenship
-    minimum_degree_year
-  }
-}
-""")
-job1_id = None
-if data.get("data") and data["data"].get("createJob"):
-    job1_id = data["data"]["createJob"]["jobId"]
-    passed = (data["data"]["createJob"]["requires_us_citizenship"] is None and 
-              data["data"]["createJob"]["minimum_degree_year"] is None)
-    if passed: passed_tests += 1
-    print_test("1.1: Create job without new fields (should be null)", passed,
-               f"Job ID: {job1_id}, Fields: {data['data']['createJob']}")
-else:
-    print_test("1.1: Create job without new fields", False, f"Error: {data}")
-
-# Test 1.2: Update job with citizenship requirement only
-total_tests += 1
-if job1_id:
-    status, data = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job1_id}, input: {{
-        requires_us_citizenship: true
-      }}) {{
-        jobId
-        requires_us_citizenship
-        minimum_degree_year
-      }}
-    }}
-    """)
-    if data.get("data") and data["data"].get("updateJob"):
-        passed = (data["data"]["updateJob"]["requires_us_citizenship"] == True and
-                  data["data"]["updateJob"]["minimum_degree_year"] is None)
-        if passed: passed_tests += 1
-        print_test("1.2: Update citizenship only", passed,
-                   f"Citizenship: {data['data']['updateJob']['requires_us_citizenship']}")
-    else:
-        print_test("1.2: Update citizenship only", False, f"Error: {data}")
-else:
-    print_test("1.2: Update citizenship only", False, "Skipped - no job ID")
-
-# Test 1.3: Update job with degree year only
-total_tests += 1
-if job1_id:
-    status, data = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job1_id}, input: {{
-        minimum_degree_year: 2018
-      }}) {{
-        jobId
-        requires_us_citizenship
-        minimum_degree_year
-      }}
-    }}
-    """)
-    if data.get("data") and data["data"].get("updateJob"):
-        passed = (data["data"]["updateJob"]["requires_us_citizenship"] == True and
-                  data["data"]["updateJob"]["minimum_degree_year"] == 2018)
-        if passed: passed_tests += 1
-        print_test("1.3: Update degree year only", passed,
-                   f"Degree Year: {data['data']['updateJob']['minimum_degree_year']}")
-    else:
-        print_test("1.3: Update degree year only", False, f"Error: {data}")
-else:
-    print_test("1.3: Update degree year only", False, "Skipped - no job ID")
-
-# Test 1.4: Update both fields simultaneously
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Data Scientist"
-    company: "DataCo"
-  }) {
-    jobId
-  }
-}
-""")
-job2_id = None
-if data.get("data") and data["data"].get("createJob"):
-    job2_id = data["data"]["createJob"]["jobId"]
-    status, data = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job2_id}, input: {{
-        requires_us_citizenship: false
-        minimum_degree_year: 2020
-      }}) {{
-        jobId
-        requires_us_citizenship
-        minimum_degree_year
-      }}
-    }}
-    """)
-    if data.get("data") and data["data"].get("updateJob"):
-        passed = (data["data"]["updateJob"]["requires_us_citizenship"] == False and
-                  data["data"]["updateJob"]["minimum_degree_year"] == 2020)
-        if passed: passed_tests += 1
-        print_test("1.4: Update both fields simultaneously", passed,
-                   f"Citizenship: {data['data']['updateJob']['requires_us_citizenship']}, Year: {data['data']['updateJob']['minimum_degree_year']}")
-    else:
-        print_test("1.4: Update both fields simultaneously", False, f"Error: {data}")
-else:
-    print_test("1.4: Update both fields simultaneously", False, "Failed to create job")
-
-# ============================================================================
-# TEST SUITE 2: Edge Cases
-# ============================================================================
-print("\n[SUITE 2] Edge Cases")
-print("-" * 70)
-
-# Test 2.1: Set citizenship to false
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Remote Worker"
-    company: "GlobalCo"
-  }) {
-    jobId
-  }
-}
-""")
-job3_id = None
-if data.get("data") and data["data"].get("createJob"):
-    job3_id = data["data"]["createJob"]["jobId"]
-    status, data = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job3_id}, input: {{
-        requires_us_citizenship: false
-      }}) {{
-        requires_us_citizenship
-      }}
-    }}
-    """)
-    if data.get("data") and data["data"].get("updateJob"):
-        passed = data["data"]["updateJob"]["requires_us_citizenship"] == False
-        if passed: passed_tests += 1
-        print_test("2.1: Set citizenship to false", passed,
-                   f"Value: {data['data']['updateJob']['requires_us_citizenship']}")
-    else:
-        print_test("2.1: Set citizenship to false", False, f"Error: {data}")
-else:
-    print_test("2.1: Set citizenship to false", False, "Failed to create job")
-
-# Test 2.2: Very old degree year (1950)
-total_tests += 1
-if job3_id:
-    status, data = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job3_id}, input: {{
-        minimum_degree_year: 1950
-      }}) {{
-        minimum_degree_year
-      }}
-    }}
-    """)
-    if data.get("data") and data["data"].get("updateJob"):
-        passed = data["data"]["updateJob"]["minimum_degree_year"] == 1950
-        if passed: passed_tests += 1
-        print_test("2.2: Very old degree year (1950)", passed,
-                   f"Value: {data['data']['updateJob']['minimum_degree_year']}")
-    else:
-        print_test("2.2: Very old degree year (1950)", False, f"Error: {data}")
-else:
-    print_test("2.2: Very old degree year (1950)", False, "Skipped - no job ID")
-
-# Test 2.3: Future degree year (2030)
-total_tests += 1
-if job3_id:
-    status, data = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job3_id}, input: {{
-        minimum_degree_year: 2030
-      }}) {{
-        minimum_degree_year
-      }}
-    }}
-    """)
-    if data.get("data") and data["data"].get("updateJob"):
-        passed = data["data"]["updateJob"]["minimum_degree_year"] == 2030
-        if passed: passed_tests += 1
-        print_test("2.3: Future degree year (2030)", passed,
-                   f"Value: {data['data']['updateJob']['minimum_degree_year']}")
-    else:
-        print_test("2.3: Future degree year (2030)", False, f"Error: {data}")
-else:
-    print_test("2.3: Future degree year (2030)", False, "Skipped - no job ID")
-
-# Test 2.4: Toggle citizenship multiple times
-total_tests += 1
-if job3_id:
-    # Set to true
-    status, data = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job3_id}, input: {{
-        requires_us_citizenship: true
-      }}) {{
-        requires_us_citizenship
-      }}
-    }}
-    """)
-    # Set back to false
-    status, data = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job3_id}, input: {{
-        requires_us_citizenship: false
-      }}) {{
-        requires_us_citizenship
-      }}
-    }}
-    """)
-    if data.get("data") and data["data"].get("updateJob"):
-        passed = data["data"]["updateJob"]["requires_us_citizenship"] == False
-        if passed: passed_tests += 1
-        print_test("2.4: Toggle citizenship multiple times", passed,
-                   f"Final value: {data['data']['updateJob']['requires_us_citizenship']}")
-    else:
-        print_test("2.4: Toggle citizenship multiple times", False, f"Error: {data}")
-else:
-    print_test("2.4: Toggle citizenship multiple times", False, "Skipped - no job ID")
-
-# ============================================================================
-# TEST SUITE 3: Combined Updates
-# ============================================================================
-print("\n[SUITE 3] Combined Updates with Other Fields")
-print("-" * 70)
-
-# Test 3.1: Update title and citizenship together
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Junior Developer"
-    company: "StartupCo"
-  }) {
-    jobId
-  }
-}
-""")
-job4_id = None
-if data.get("data") and data["data"].get("createJob"):
-    job4_id = data["data"]["createJob"]["jobId"]
-    status, data = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job4_id}, input: {{
-        title: "Senior Developer"
-        requires_us_citizenship: true
-      }}) {{
-        title
-        requires_us_citizenship
-      }}
-    }}
-    """)
-    if data.get("data") and data["data"].get("updateJob"):
-        passed = (data["data"]["updateJob"]["title"] == "Senior Developer" and
-                  data["data"]["updateJob"]["requires_us_citizenship"] == True)
-        if passed: passed_tests += 1
-        print_test("3.1: Update title and citizenship together", passed,
-                   f"Title: {data['data']['updateJob']['title']}, Citizenship: {data['data']['updateJob']['requires_us_citizenship']}")
-    else:
-        print_test("3.1: Update title and citizenship together", False, f"Error: {data}")
-else:
-    print_test("3.1: Update title and citizenship together", False, "Failed to create job")
-
-# Test 3.2: Update all modifiable fields
-total_tests += 1
-if job4_id:
-    status, data = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job4_id}, input: {{
-        title: "Principal Engineer"
-        company: "MegaCorp"
-        location: "New York"
-        salaryRange: "200k-300k"
-        description: "Lead technical initiatives"
-        requires_us_citizenship: false
-        minimum_degree_year: 2010
-      }}) {{
-        title
-        company
-        location
-        salaryRange
-        description
-        requires_us_citizenship
-        minimum_degree_year
-      }}
-    }}
-    """)
-    if data.get("data") and data["data"].get("updateJob"):
-        job = data["data"]["updateJob"]
-        passed = (job["title"] == "Principal Engineer" and
-                  job["company"] == "MegaCorp" and
-                  job["requires_us_citizenship"] == False and
-                  job["minimum_degree_year"] == 2010)
-        if passed: passed_tests += 1
-        print_test("3.2: Update all modifiable fields", passed,
-                   f"All fields updated correctly")
-    else:
-        print_test("3.2: Update all modifiable fields", False, f"Error: {data}")
-else:
-    print_test("3.2: Update all modifiable fields", False, "Skipped - no job ID")
-
-# ============================================================================
-# TEST SUITE 4: Query Verification
-# ============================================================================
-print("\n[SUITE 4] Query Verification")
-print("-" * 70)
-
-# Test 4.1: Query job by ID returns new fields
-total_tests += 1
-if job1_id:
-    status, data = run_query(f"""
-    query {{
-      jobById(jobId: {job1_id}) {{
-        jobId
-        title
-        requires_us_citizenship
-        minimum_degree_year
-      }}
-    }}
-    """)
-    if data.get("data") and data["data"].get("jobById"):
-        job = data["data"]["jobById"]
-        passed = ("requires_us_citizenship" in job and "minimum_degree_year" in job)
-        if passed: passed_tests += 1
-        print_test("4.1: Query job by ID returns new fields", passed,
-                   f"Fields present: {list(job.keys())}")
-    else:
-        print_test("4.1: Query job by ID returns new fields", False, f"Error: {data}")
-else:
-    print_test("4.1: Query job by ID returns new fields", False, "Skipped - no job ID")
-
-# Test 4.2: Query all jobs returns new fields
-total_tests += 1
-status, data = run_query("""
-query {
-  jobs(limit: 1) {
-    jobId
-    title
-    requires_us_citizenship
-    minimum_degree_year
-  }
-}
-""")
-if data.get("data") and data["data"].get("jobs") and len(data["data"]["jobs"]) > 0:
-    job = data["data"]["jobs"][0]
-    passed = ("requires_us_citizenship" in job and "minimum_degree_year" in job)
-    if passed: passed_tests += 1
-    print_test("4.2: Query all jobs returns new fields", passed,
-               f"Fields present in first job")
-else:
-    print_test("4.2: Query all jobs returns new fields", False, f"Error or no jobs: {data}")
-
-# ============================================================================
-# TEST SUITE 5: Null/Reset Tests
-# ============================================================================
-print("\n[SUITE 5] Null/Reset Behavior")
-print("-" * 70)
-
-# Test 5.1: Can we reset citizenship to null? (This might not work, testing behavior)
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Test Reset Job"
-    company: "TestCo"
-  }) {
-    jobId
-  }
-}
-""")
-job5_id = None
-if data.get("data") and data["data"].get("createJob"):
-    job5_id = data["data"]["createJob"]["jobId"]
-    # First set it to true
-    run_query(f"""
-    mutation {{
-      updateJob(jobId: {job5_id}, input: {{
-        requires_us_citizenship: true
-        minimum_degree_year: 2015
-      }}) {{
-        jobId
-      }}
-    }}
-    """)
-    # Try to update without these fields (should keep existing values)
-    status, data = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job5_id}, input: {{
-        title: "Updated Title"
-      }}) {{
-        title
-        requires_us_citizenship
-        minimum_degree_year
-      }}
-    }}
-    """)
-    if data.get("data") and data["data"].get("updateJob"):
-        job = data["data"]["updateJob"]
-        # Fields should persist (not reset to null)
-        passed = (job["requires_us_citizenship"] == True and 
-                  job["minimum_degree_year"] == 2015 and
-                  job["title"] == "Updated Title")
-        if passed: passed_tests += 1
-        print_test("5.1: Fields persist when not included in update", passed,
-                   f"Citizenship: {job['requires_us_citizenship']}, Year: {job['minimum_degree_year']}")
-    else:
-        print_test("5.1: Fields persist when not included in update", False, f"Error: {data}")
-else:
-    print_test("5.1: Fields persist when not included in update", False, "Failed to create job")
-
-# ============================================================================
-# SUMMARY
-# ============================================================================
-print("\n" + "=" * 70)
-print("TEST SUMMARY")
-print("=" * 70)
-print(f"Total Tests: {total_tests}")
-print(f"Passed: {passed_tests}")
-print(f"Failed: {total_tests - passed_tests}")
-print(f"Success Rate: {(passed_tests/total_tests*100):.1f}%")
-print("=" * 70)
-
-if passed_tests == total_tests:
-    print("\n[SUCCESS] All tests passed! ✓")
-else:
-    print(f"\n[WARNING] {total_tests - passed_tests} test(s) failed")
-</file>
-
-<file path="test_updateJobByFields_heavy.py">
-import requests
-import json
-
-url = "http://localhost:8000/graphql"
-headers = {"X-User-Role": "Recruiter"}
-
-def run_query(query):
-    try:
-        response = requests.post(url, json={"query": query}, headers=headers)
-        return response.status_code, response.json()
-    except Exception as e:
-        return None, {"error": str(e)}
-
-def print_test(name, passed, details=""):
-    status = "[PASS]" if passed else "[FAIL]"
-    print(f"{status} {name}")
-    if details:
-        print(f"     {details}")
-
-# Track results
-total_tests = 0
-passed_tests = 0
-
-print("=" * 80)
-print("ENHANCED HEAVY TESTING: updateJobByFields Mutation")
-print("=" * 80)
-
-# ============================================================================
-# TEST SUITE 1: updateJobByFields - Basic Functionality
-# ============================================================================
-print("\n[SUITE 1] updateJobByFields - Basic Functionality")
-print("-" * 80)
-
-# Test 1.1: Update job by title only (no company specified)
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Unique Backend Engineer"
-    company: "BackendCorp"
-    location: "Remote"
-  }) {
-    jobId
-    title
-    company
-  }
-}
-""")
-if data.get("data") and data["data"].get("createJob"):
-    created_job = data["data"]["createJob"]
-    status, data = run_query("""
-    mutation {
-      updateJobByFields(
-        title: "Unique Backend Engineer"
-        input: { requires_us_citizenship: true }
-      ) {
-        jobId
-        title
-        requires_us_citizenship
-      }
-    }
-    """)
-    if data.get("data") and data["data"].get("updateJobByFields"):
-        passed = data["data"]["updateJobByFields"]["requires_us_citizenship"] == True
-        if passed: passed_tests += 1
-        print_test("1.1: Update job by title only", passed,
-                   f"Updated job {data['data']['updateJobByFields']['jobId']}")
-    else:
-        print_test("1.1: Update job by title only", False, f"Error: {data}")
-else:
-    print_test("1.1: Update job by title only", False, "Failed to create job")
-
-# Test 1.2: Update job by title AND company
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Senior Data Engineer"
-    company: "DataCorp"
-  }) {
-    jobId
-  }
-}
-""")
-if data.get("data") and data["data"].get("createJob"):
-    status, data = run_query("""
-    mutation {
-      updateJobByFields(
-        title: "Senior Data Engineer"
-        company: "DataCorp"
-        input: { minimum_degree_year: 2015 }
-      ) {
-        jobId
-        title
-        company
-        minimum_degree_year
-      }
-    }
-    """)
-    if data.get("data") and data["data"].get("updateJobByFields"):
-        job = data["data"]["updateJobByFields"]
-        passed = (job["minimum_degree_year"] == 2015 and 
-                  job["title"] == "Senior Data Engineer" and
-                  job["company"] == "DataCorp")
-        if passed: passed_tests += 1
-        print_test("1.2: Update job by title AND company", passed,
-                   f"Job {job['jobId']} updated correctly")
-    else:
-        print_test("1.2: Update job by title AND company", False, f"Error: {data}")
-else:
-    print_test("1.2: Update job by title AND company", False, "Failed to create job")
-
-# Test 1.3: Update both citizenship and degree year
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "ML Engineer"
-    company: "AI Labs"
-  }) {
-    jobId
-  }
-}
-""")
-if data.get("data") and data["data"].get("createJob"):
-    status, data = run_query("""
-    mutation {
-      updateJobByFields(
-        title: "ML Engineer"
-        company: "AI Labs"
-        input: { 
-          requires_us_citizenship: true
-          minimum_degree_year: 2018
-        }
-      ) {
-        jobId
-        requires_us_citizenship
-        minimum_degree_year
-      }
-    }
-    """)
-    if data.get("data") and data["data"].get("updateJobByFields"):
-        job = data["data"]["updateJobByFields"]
-        passed = (job["requires_us_citizenship"] == True and 
-                  job["minimum_degree_year"] == 2018)
-        if passed: passed_tests += 1
-        print_test("1.3: Update both citizenship and degree year", passed,
-                   f"Both fields updated: citizenship={job['requires_us_citizenship']}, year={job['minimum_degree_year']}")
-    else:
-        print_test("1.3: Update both citizenship and degree year", False, f"Error: {data}")
-else:
-    print_test("1.3: Update both citizenship and degree year", False, "Failed to create job")
-
-# ============================================================================
-# TEST SUITE 2: updateJobByFields - Error Handling
-# ============================================================================
-print("\n[SUITE 2] updateJobByFields - Error Handling")
-print("-" * 80)
-
-# Test 2.1: Job not found
-total_tests += 1
-status, data = run_query("""
-mutation {
-  updateJobByFields(
-    title: "Non-Existent Job Title XYZ123"
-    input: { requires_us_citizenship: true }
-  ) {
-    jobId
-  }
-}
-""")
-if data.get("errors"):
-    passed = "not found" in str(data["errors"]).lower()
-    if passed: passed_tests += 1
-    print_test("2.1: Job not found error", passed,
-               f"Correctly returned error")
-else:
-    print_test("2.1: Job not found error", False, "Should have returned error")
-
-# Test 2.2: Multiple jobs match (ambiguous)
-total_tests += 1
-# Create two jobs with same title, different companies
-status, data1 = run_query("""
-mutation {
-  createJob(input: {
-    title: "Duplicate Title Job"
-    company: "Company A"
-  }) {
-    jobId
-  }
-}
-""")
-status, data2 = run_query("""
-mutation {
-  createJob(input: {
-    title: "Duplicate Title Job"
-    company: "Company B"
-  }) {
-    jobId
-  }
-}
-""")
-if (data1.get("data") and data1["data"].get("createJob") and 
-    data2.get("data") and data2["data"].get("createJob")):
-    # Try to update without specifying company (should fail - ambiguous)
-    status, data = run_query("""
-    mutation {
-      updateJobByFields(
-        title: "Duplicate Title Job"
-        input: { requires_us_citizenship: true }
-      ) {
-        jobId
-      }
-    }
-    """)
-    if data.get("errors"):
-        passed = "multiple" in str(data["errors"]).lower()
-        if passed: passed_tests += 1
-        print_test("2.2: Multiple jobs matched error", passed,
-                   f"Correctly detected ambiguous update")
-    else:
-        print_test("2.2: Multiple jobs matched error", False, "Should have returned error for ambiguous match")
-else:
-    print_test("2.2: Multiple jobs matched error", False, "Failed to create duplicate jobs")
-
-# Test 2.3: Update with company specified resolves ambiguity
-total_tests += 1
-status, data = run_query("""
-mutation {
-  updateJobByFields(
-    title: "Duplicate Title Job"
-    company: "Company A"
-    input: { requires_us_citizenship: true }
-  ) {
-    jobId
-    company
-    requires_us_citizenship
-  }
-}
-""")
-if data.get("data") and data["data"].get("updateJobByFields"):
-    job = data["data"]["updateJobByFields"]
-    passed = (job["company"] == "Company A" and 
-              job["requires_us_citizenship"] == True)
-    if passed: passed_tests += 1
-    print_test("2.3: Company specified resolves ambiguity", passed,
-               f"Updated correct job: {job['company']}")
-else:
-    print_test("2.3: Company specified resolves ambiguity", False, f"Error: {data}")
-
-# ============================================================================
-# TEST SUITE 3: updateJobByFields - Combined Field Updates
-# ============================================================================
-print("\n[SUITE 3] updateJobByFields - Combined Field Updates")
-print("-" * 80)
-
-# Test 3.1: Update title along with new fields
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Junior DevOps"
-    company: "CloudCo"
-  }) {
-    jobId
-  }
-}
-""")
-if data.get("data") and data["data"].get("createJob"):
-    status, data = run_query("""
-    mutation {
-      updateJobByFields(
-        title: "Junior DevOps"
-        company: "CloudCo"
-        input: { 
-          title: "Senior DevOps"
-          requires_us_citizenship: true
-          minimum_degree_year: 2016
-        }
-      ) {
-        jobId
-        title
-        requires_us_citizenship
-        minimum_degree_year
-      }
-    }
-    """)
-    if data.get("data") and data["data"].get("updateJobByFields"):
-        job = data["data"]["updateJobByFields"]
-        passed = (job["title"] == "Senior DevOps" and
-                  job["requires_us_citizenship"] == True and
-                  job["minimum_degree_year"] == 2016)
-        if passed: passed_tests += 1
-        print_test("3.1: Update title along with new fields", passed,
-                   f"All fields updated: {job['title']}, citizenship={job['requires_us_citizenship']}, year={job['minimum_degree_year']}")
-    else:
-        print_test("3.1: Update title along with new fields", False, f"Error: {data}")
-else:
-    print_test("3.1: Update title along with new fields", False, "Failed to create job")
-
-# Test 3.2: Update all fields at once
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Basic Job"
-    company: "BasicCo"
-  }) {
-    jobId
-  }
-}
-""")
-if data.get("data") and data["data"].get("createJob"):
-    status, data = run_query("""
-    mutation {
-      updateJobByFields(
-        title: "Basic Job"
-        company: "BasicCo"
-        input: { 
-          title: "Advanced Position"
-          company: "AdvancedCo"
-          location: "San Francisco"
-          salaryRange: "150k-200k"
-          description: "Exciting opportunity"
-          requires_us_citizenship: false
-          minimum_degree_year: 2020
-        }
-      ) {
-        jobId
-        title
-        company
-        location
-        salaryRange
-        description
-        requires_us_citizenship
-        minimum_degree_year
-      }
-    }
-    """)
-    if data.get("data") and data["data"].get("updateJobByFields"):
-        job = data["data"]["updateJobByFields"]
-        passed = (job["title"] == "Advanced Position" and
-                  job["company"] == "AdvancedCo" and
-                  job["location"] == "San Francisco" and
-                  job["requires_us_citizenship"] == False and
-                  job["minimum_degree_year"] == 2020)
-        if passed: passed_tests += 1
-        print_test("3.2: Update all fields at once", passed,
-                   f"All fields updated successfully")
-    else:
-        print_test("3.2: Update all fields at once", False, f"Error: {data}")
-else:
-    print_test("3.2: Update all fields at once", False, "Failed to create job")
-
-# ============================================================================
-# TEST SUITE 4: Case Sensitivity Tests
-# ============================================================================
-print("\n[SUITE 4] Case Sensitivity Tests")
-print("-" * 80)
-
-# Test 4.1: Case-insensitive title matching
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Software Architect"
-    company: "ArchCo"
-  }) {
-    jobId
-  }
-}
-""")
-if data.get("data") and data["data"].get("createJob"):
-    # Try to update with different case
-    status, data = run_query("""
-    mutation {
-      updateJobByFields(
-        title: "software architect"
-        company: "ArchCo"
-        input: { requires_us_citizenship: true }
-      ) {
-        jobId
-        title
-        requires_us_citizenship
-      }
-    }
-    """)
-    if data.get("data") and data["data"].get("updateJobByFields"):
-        passed = data["data"]["updateJobByFields"]["requires_us_citizenship"] == True
-        if passed: passed_tests += 1
-        print_test("4.1: Case-insensitive title matching", passed,
-                   f"Matched despite case difference")
-    else:
-        print_test("4.1: Case-insensitive title matching", False, f"Error: {data}")
-else:
-    print_test("4.1: Case-insensitive title matching", False, "Failed to create job")
-
-# Test 4.2: Case-insensitive company matching
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "QA Engineer"
-    company: "TestCorp"
-  }) {
-    jobId
-  }
-}
-""")
-if data.get("data") and data["data"].get("createJob"):
-    status, data = run_query("""
-    mutation {
-      updateJobByFields(
-        title: "QA Engineer"
-        company: "testcorp"
-        input: { minimum_degree_year: 2019 }
-      ) {
-        jobId
-        company
-        minimum_degree_year
-      }
-    }
-    """)
-    if data.get("data") and data["data"].get("updateJobByFields"):
-        passed = data["data"]["updateJobByFields"]["minimum_degree_year"] == 2019
-        if passed: passed_tests += 1
-        print_test("4.2: Case-insensitive company matching", passed,
-                   f"Matched company despite case difference")
-    else:
-        print_test("4.2: Case-insensitive company matching", False, f"Error: {data}")
-else:
-    print_test("4.2: Case-insensitive company matching", False, "Failed to create job")
-
-# ============================================================================
-# TEST SUITE 5: Comparison with updateJob (ID-based)
-# ============================================================================
-print("\n[SUITE 5] Comparison: updateJobByFields vs updateJob")
-print("-" * 80)
-
-# Test 5.1: Both methods produce same result
-total_tests += 1
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Comparison Test Job A"
-    company: "CompareA"
-  }) {
-    jobId
-  }
-}
-""")
-job_a_id = None
-if data.get("data") and data["data"].get("createJob"):
-    job_a_id = data["data"]["createJob"]["jobId"]
-
-status, data = run_query("""
-mutation {
-  createJob(input: {
-    title: "Comparison Test Job B"
-    company: "CompareB"
-  }) {
-    jobId
-  }
-}
-""")
-job_b_id = None
-if data.get("data") and data["data"].get("createJob"):
-    job_b_id = data["data"]["createJob"]["jobId"]
-
-if job_a_id and job_b_id:
-    # Update A using updateJob (ID-based)
-    status, data_a = run_query(f"""
-    mutation {{
-      updateJob(jobId: {job_a_id}, input: {{
-        requires_us_citizenship: true
-        minimum_degree_year: 2017
-      }}) {{
-        requires_us_citizenship
-        minimum_degree_year
-      }}
-    }}
-    """)
-    
-    # Update B using updateJobByFields (field-based)
-    status, data_b = run_query("""
-    mutation {
-      updateJobByFields(
-        title: "Comparison Test Job B"
-        company: "CompareB"
-        input: {
-          requires_us_citizenship: true
-          minimum_degree_year: 2017
-        }
-      ) {
-        requires_us_citizenship
-        minimum_degree_year
-      }
-    }
-    """)
-    
-    if (data_a.get("data") and data_a["data"].get("updateJob") and
-        data_b.get("data") and data_b["data"].get("updateJobByFields")):
-        job_a = data_a["data"]["updateJob"]
-        job_b = data_b["data"]["updateJobByFields"]
-        passed = (job_a["requires_us_citizenship"] == job_b["requires_us_citizenship"] and
-                  job_a["minimum_degree_year"] == job_b["minimum_degree_year"])
-        if passed: passed_tests += 1
-        print_test("5.1: Both methods produce same result", passed,
-                   f"updateJob and updateJobByFields behave identically")
-    else:
-        print_test("5.1: Both methods produce same result", False, "One or both updates failed")
-else:
-    print_test("5.1: Both methods produce same result", False, "Failed to create comparison jobs")
-
-# ============================================================================
-# SUMMARY
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST SUMMARY - updateJobByFields Enhanced Tests")
-print("=" * 80)
-print(f"Total Tests: {total_tests}")
-print(f"Passed: {passed_tests}")
-print(f"Failed: {total_tests - passed_tests}")
-print(f"Success Rate: {(passed_tests/total_tests*100):.1f}%")
-print("=" * 80)
-
-if passed_tests == total_tests:
-    print("\n[SUCCESS] All updateJobByFields tests passed! ✓")
-else:
-    print(f"\n[WARNING] {total_tests - passed_tests} test(s) failed")
-</file>
-
 <file path="WORKFLOW_DIAGRAM.txt">
 # WORKFLOW VISUALIZATION - Interview Automation System
 
@@ -4295,6 +3494,8 @@ IDE files
 .vscode/
 
 /src/backend/resumes/
+/src/backend/.env/
+/src/.env/
 </file>
 
 <file path="README.md">
@@ -4567,133 +3768,6 @@ root.render(
 // and potentially CSS, but 'react-scripts start' handles index.html creation.
 </file>
 
-<file path="src/backend/db.py">
-# db.py
-import os
-from datetime import datetime
-from dotenv import load_dotenv
-from pymongo import MongoClient, ReturnDocument
-
-# ... (no changes to MONGO_URI, DB_NAME, _client, _db, get_db)
-load_dotenv(os.path.join(os.path.dirname(__file__), '../../config/.env'))
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-DB_NAME = os.getenv("DB_NAME", "jobtracker")
-_client = MongoClient(MONGO_URI)
-_db = _client[DB_NAME]
-def get_db():
-    return _db
-
-
-# --- Collection Helpers ---
-def users_collection():
-    return _db["users"]
-
-def jobs_collection():
-    return _db["jobs"]
-
-def applications_collection(): # New
-    return _db["applications"]
-
-def counters_collection():
-    return _db["counters"]
-
-
-# --- NEW: Scheduling Collections ---
-def schedules_collection():
-    return _db["schedules"]
-
-def interviews_collection():
-    return _db["interviews"]
-
-
-# --- Counters (User, Job, and new Application counter) ---
-def _ensure_counter(counter_id: str):
-    counters_collection().update_one(
-        {"_id": counter_id},
-        {"$setOnInsert": {"sequence_value": 0}},
-        upsert=True,
-    )
-
-def _next_id(counter_id: str):
-    result = counters_collection().find_one_and_update(
-        {"_id": counter_id},
-        {"$inc": {"sequence_value": 1}},
-        return_document=ReturnDocument.AFTER,
-        upsert=True,
-    )
-    return int(result["sequence_value"])
-
-def ensure_user_counter():
-    _ensure_counter("UserID")
-
-def next_user_id():
-    return _next_id("UserID")
-
-def ensure_job_counter():
-    _ensure_counter("jobId")
-
-def next_job_id():
-    return _next_id("jobId")
-
-def ensure_application_counter(): # New
-    _ensure_counter("appId")
-
-def next_application_id(): # New
-    return _next_id("appId")
-
-
-# --- NEW: Interview Counters ---
-def ensure_interview_counter():
-    _ensure_counter("interviewId")
-
-def next_interview_id():
-    return _next_id("interviewId")
-
-
-# --- Output Formatting (no changes to user/job, new for application) ---
-def to_user_output(doc: dict): # ... no changes
-    if not doc:
-        return None
-    return {
-        "UserID": int(doc.get("UserID")) if doc.get("UserID") is not None else None,
-        "FirstName": doc.get("FirstName"),
-        "LastName": doc.get("LastName"),
-        "DateOfBirth": doc.get("DateOfBirth"),
-        "ProfessionalTitle": doc.get("ProfessionalTitle"),
-        "Summary": doc.get("Summary"),
-    }
-
-def to_job_output(doc: dict): # ... no changes
-    if not doc:
-        return None
-    return {
-        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
-        "title": doc.get("title"),
-        "company": doc.get("company"),
-        "location": doc.get("location"),
-        "salaryRange": doc.get("salaryRange"),
-        "skillsRequired": doc.get("skillsRequired"),
-        "description": doc.get("description"),
-        "postedAt": doc.get("postedAt"),
-    }
-
-def to_application_output(doc: dict): # New
-    if not doc:
-        return None
-    return {
-        "appId": int(doc.get("appId")) if doc.get("appId") is not None else None,
-        "userId": int(doc.get("userId")) if doc.get("userId") is not None else None,
-        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
-        "status": doc.get("status"),
-        "submittedAt": doc.get("submittedAt"),
-        "notes": doc.get("notes"),
-        "userName": doc.get("userName"),
-        "jobTitle": doc.get("jobTitle"),
-        "companyName": doc.get("companyName"),
-        "emailSent": doc.get("emailSent"), # <-- NEW
-    }
-</file>
-
 <file path="src/backend/services/email_service.py">
 # src/backend/services/email_service.py
 import os
@@ -4753,7 +3827,8 @@ def _send_email(to_email: str, subject: str, html_body: str) -> bool:
     except Exception as e:
         # Re-raise the exception after printing for a full traceback
         print(f"ULTIMATE_DEBUG: SMTP FAILURE - {type(e).__name__}: {e}")
-        raise # <-- CRITICAL: Re-raise the exception to force Flask to show the traceback
+        # Don't re-raise here to avoid crashing background threads or resolvers.
+        logger.error(f"SMTP FAILURE: {type(e).__name__}: {e}")
         return False
 
 # def _send_email(to_email: str, subject: str, html_body: str) -> bool:
@@ -4979,6 +4054,133 @@ EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_USERNAME=raju.boga18@gmail.com
 EMAIL_PASSWORD=pwdjrlxaxzsaxnqh
+</file>
+
+<file path="src/backend/db.py">
+# db.py
+import os
+from datetime import datetime
+from dotenv import load_dotenv
+from pymongo import MongoClient, ReturnDocument
+
+# ... (no changes to MONGO_URI, DB_NAME, _client, _db, get_db)
+load_dotenv(os.path.join(os.path.dirname(__file__), '../../config/.env'))
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+DB_NAME = os.getenv("DB_NAME", "jobtracker")
+_client = MongoClient(MONGO_URI)
+_db = _client[DB_NAME]
+def get_db():
+    return _db
+
+
+# --- Collection Helpers ---
+def users_collection():
+    return _db["users"]
+
+def jobs_collection():
+    return _db["jobs"]
+
+def applications_collection(): # New
+    return _db["applications"]
+
+def counters_collection():
+    return _db["counters"]
+
+
+# --- NEW: Scheduling Collections ---
+def schedules_collection():
+    return _db["schedules"]
+
+def interviews_collection():
+    return _db["interviews"]
+
+
+# --- Counters (User, Job, and new Application counter) ---
+def _ensure_counter(counter_id: str):
+    counters_collection().update_one(
+        {"_id": counter_id},
+        {"$setOnInsert": {"sequence_value": 0}},
+        upsert=True,
+    )
+
+def _next_id(counter_id: str):
+    result = counters_collection().find_one_and_update(
+        {"_id": counter_id},
+        {"$inc": {"sequence_value": 1}},
+        return_document=ReturnDocument.AFTER,
+        upsert=True,
+    )
+    return int(result["sequence_value"])
+
+def ensure_user_counter():
+    _ensure_counter("UserID")
+
+def next_user_id():
+    return _next_id("UserID")
+
+def ensure_job_counter():
+    _ensure_counter("jobId")
+
+def next_job_id():
+    return _next_id("jobId")
+
+def ensure_application_counter(): # New
+    _ensure_counter("appId")
+
+def next_application_id(): # New
+    return _next_id("appId")
+
+
+# --- NEW: Interview Counters ---
+def ensure_interview_counter():
+    _ensure_counter("interviewId")
+
+def next_interview_id():
+    return _next_id("interviewId")
+
+
+# --- Output Formatting (no changes to user/job, new for application) ---
+def to_user_output(doc: dict): # ... no changes
+    if not doc:
+        return None
+    return {
+        "UserID": int(doc.get("UserID")) if doc.get("UserID") is not None else None,
+        "FirstName": doc.get("FirstName"),
+        "LastName": doc.get("LastName"),
+        "DateOfBirth": doc.get("DateOfBirth"),
+        "ProfessionalTitle": doc.get("ProfessionalTitle"),
+        "Summary": doc.get("Summary"),
+    }
+
+def to_job_output(doc: dict): # ... no changes
+    if not doc:
+        return None
+    return {
+        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
+        "title": doc.get("title"),
+        "company": doc.get("company"),
+        "location": doc.get("location"),
+        "salaryRange": doc.get("salaryRange"),
+        "skillsRequired": doc.get("skillsRequired"),
+        "description": doc.get("description"),
+        "postedAt": doc.get("postedAt"),
+    }
+
+def to_application_output(doc: dict): # New
+    if not doc:
+        return None
+    return {
+        "appId": int(doc.get("appId")) if doc.get("appId") is not None else None,
+        "userId": int(doc.get("userId")) if doc.get("userId") is not None else None,
+        "jobId": int(doc.get("jobId")) if doc.get("jobId") is not None else None,
+        "status": doc.get("status"),
+        "submittedAt": doc.get("submittedAt"),
+        "notes": doc.get("notes"),
+        "userName": doc.get("userName"),
+        "jobTitle": doc.get("jobTitle"),
+        "companyName": doc.get("companyName"),
+        "emailSent": doc.get("emailSent"), # <-- NEW
+    }
 </file>
 
 <file path="src/backend/resolvers/job_resolvers.py">
@@ -5428,6 +4630,49 @@ body {
 .status-error {
   color: #c62828;
   font-weight: bold;
+}
+
+/* Scheduling panel styles */
+.scheduling-panel {
+  padding: 20px;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  background-color: var(--card-background);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.slot-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.slot-button {
+  background-color: var(--button-bg);
+  color: var(--button-text);
+  padding: 8px 15px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.slot-button:hover {
+  background-color: #0b5cb0;
+}
+
+.action-button { /* For the initial invite button */
+  padding: 6px 12px;
+  background-color: var(--button-bg);
+  color: var(--button-text);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-left: 10px;
+  font-size: 0.9em;
+  font-weight: 600;
 }
 </file>
 
@@ -5963,7 +5208,7 @@ const JobResult = ({ job }) => (
 );
 
 // An enhanced component to render a single, detailed User profile
-const UserResult = ({ user }) => (
+const UserResult = ({ user, onInviteClick }) => (
     <div className="result-item">
         <div className="item-header">
             <span className="item-title">{user.firstName} {user.lastName}</span>
@@ -5994,6 +5239,22 @@ const UserResult = ({ user }) => (
             {user.linkedin_profile && <a href={user.linkedin_profile} target="_blank" rel="noopener noreferrer">LinkedIn</a>}
             {user.portfolio_url && <a href={user.portfolio_url} target="_blank" rel="noopener noreferrer">Portfolio</a>}
         </div>
+
+        {/* --- NEW: Invite Button (Recruiter View) --- */}
+        {onInviteClick && user.jobId && user.UserID ? (
+             <button 
+                 className="action-button invite-button"
+                 onClick={() => onInviteClick(
+                     user.UserID, 
+                     user.jobId,
+                     `${user.firstName} ${user.lastName}`,
+                     user.jobTitle
+                 )}
+             >
+                 {user.applicationStatus ? `${user.applicationStatus} / Schedule` : 'Schedule Interview'}
+             </button>
+        ) : null}
+        {/* ------------------------------------------ */}
     </div>
 );
 
@@ -6014,7 +5275,7 @@ const ApplicationResult = ({ app }) => (
 );
 
 
-const ResultsDisplay = ({ rawGql, rawJson }) => {
+const ResultsDisplay = ({ rawGql, rawJson, onInviteClick }) => {
   const [detailsVisible, setDetailsVisible] = useState(false);
 
   let resultsContent = null;
@@ -6053,8 +5314,8 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
           resultsContent = resultData.jobs.map(job => (
               <div key={job.jobId} className="result-item job-applicant-container">
                   <h3 className="container-title">Applicants for: {job.title} at {job.company}</h3>
-                  {job.applicants.length > 0 ? (
-                      job.applicants.map(applicant => <UserResult key={applicant.UserID} user={applicant} />)
+                      {job.applicants.length > 0 ? (
+                      job.applicants.map(applicant => <UserResult key={applicant.UserID} user={{...applicant, jobId: job.jobId, jobTitle: job.title}} onInviteClick={onInviteClick} />)
                   ) : (
                       <p>No applicants found for this job yet.</p>
                   )}
@@ -6068,24 +5329,24 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
             : <p>No jobs found matching your criteria.</p>;
       
       // Handles a list of users
-      } else if (resultData.users && Array.isArray(resultData.users)) {
-          resultsContent = resultData.users.length > 0
-            ? resultData.users.map(user => <UserResult key={user.UserID} user={user} />)
-            : <p>No users found matching your criteria.</p>;
+            } else if (resultData.users && Array.isArray(resultData.users)) {
+                    resultsContent = resultData.users.length > 0
+                        ? resultData.users.map(user => <UserResult key={user.UserID} user={user} onInviteClick={onInviteClick} />)
+                        : <p>No users found matching your criteria.</p>;
 
       // Handles a single user lookup
       } else if (resultData.userById) {
-          resultsContent = <UserResult user={resultData.userById} />;
+          resultsContent = <UserResult user={resultData.userById} onInviteClick={onInviteClick} />;
 
       // Handles a successful user creation or update
       } else if (resultData.createUser || resultData.updateUser || resultData.addSkillsToUser) {
-          const user = resultData.createUser || resultData.updateUser || resultData.addSkillsToUser;
-          resultsContent = (
-            <div>
-              <p>✅ Success! User profile updated:</p>
-              <UserResult user={user} />
-            </div>
-          );
+                    const user = resultData.createUser || resultData.updateUser || resultData.addSkillsToUser;
+                    resultsContent = (
+                        <div>
+                            <p>✅ Success! User profile updated:</p>
+                            <UserResult user={user} onInviteClick={onInviteClick} />
+                        </div>
+                    );
       }
   }
   
@@ -6134,6 +5395,197 @@ const StatusBadge = ({ status }) => {
 };
 
 export default ResultsDisplay;
+</file>
+
+<file path="src/backend/services/nl2gql_service.py">
+# src/backend/services/nl2gql_service.py
+import os
+import requests
+import json
+from typing import Optional
+from dotenv import load_dotenv
+
+env_path = os.path.join(os.path.dirname(__file__), '../../.env')
+load_dotenv(dotenv_path=env_path)
+
+from ..errors import json_error, unwrap_graphql_errors
+
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "https://ollama.com")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:120b-cloud")
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
+OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
+
+
+# --- RESTORED: The more comprehensive small talk handler ---
+def handle_small_talk(user_text: str):
+    """
+    Checks for a wide range of conversational phrases (greetings, idioms, etc.)
+    and returns a predefined friendly response to bypass the LLM.
+    """
+    clean_text = user_text.lower().strip()
+    words = clean_text.split()
+    
+    # --- Category 1: Direct Matches (Greetings, Gratitude, Interjections) ---
+    small_talk_map = {
+        "hi": "Hello there! How can I assist with your job data today?",
+        "hello": "Hi! I'm ready to convert your requests into GraphQL. What can I do?",
+        "hey": "Hey! Let me know what data you need to query or update.",
+        "greetings": "Greetings! I'm here to help with your job portal data via NL2GQL.",
+        "thanks": "You're welcome! I'm happy to help.",
+        "thank you": "My pleasure! Just ask if you have more queries.",
+        "wow": "Glad to impress! Do you have a query for me?",
+        "cool": "I think so too! Ready for your next command.",
+        "awesome": "I strive for excellence! Ready for a command.",
+        "oops": "Mistakes happen! Please try your query again.",
+        "sorry": "No worries at all. What is your request?",
+        "how are you": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
+        "what's up": "Just monitoring the database for your requests. What can I do for you?",
+        "how are you doing today": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
+    }
+    
+    # --- Category 2: Idioms, Common Phrases & Discourse Markers (Keyword Matching) ---
+    keyword_responses = {
+        "by the way": "Interesting point. Do you have a job or user query for me?",
+        "i mean": "I understand. Please formulate your query clearly.",
+        "just saying": "Got it. I'm waiting for a command that maps to GraphQL.",
+        "you know": "I know what you mean. Focus on what data you need.",
+        "hold on": "Okay, I'll hold. Let me know when you have a request.",
+        "excuse me": "No problem. How can I help with the data?",
+        "can you help me": "Absolutely! I can help by converting your request into a GraphQL query.",
+        "can i ask": "You can ask. I can answer if it involves querying or mutating job portal data.",
+    }
+    
+    default_response_payload = {
+        "graphql": "Small talk handled by service logic", 
+        "result": {
+            "response": (
+                "Hello! I'm your GraphQL assistant. I can help with job portal data. "
+                "Try asking me to:\n- **Find** jobs: *find jobs for Java developer in London*\n"
+                "- **Update** your profile: *update my professional title to Senior Developer*"
+            )
+        }
+    }
+    
+    # 1. Check for Direct Matches
+    if clean_text in small_talk_map:
+        return {"graphql": "Small talk handled by service logic", "result": {"response": small_talk_map[clean_text]}}, 200
+        
+    # 2. Check for Keyword Matches
+    for key, response in keyword_responses.items():
+        if key in clean_text:
+            return {"graphql": "Small talk handled by service logic", "result": {"response": response}}, 200
+
+    # 3. Check for short multi-word greetings or questions to the bot
+    if words:
+        is_greeting = words[0] in ["hi", "hello", "hey"]
+        is_vocative = "assistant" in words or "bot" in words or "jobchat" in words
+        
+        if (is_greeting or is_vocative) and len(words) <= 5:
+            # Return the default, guiding response for these cases
+            return default_response_payload, 200
+        
+    return None
+
+# --- UPDATED Prompt Builder (Keeps the userContext logic) ---
+def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[dict]) -> str:
+    context_str = ""
+    if user_context and user_context.get("UserID"):
+        user_id = user_context["UserID"]
+        first_name = user_context.get("firstName", "the user")
+        context_str = (
+            f"\n\nContext:\n"
+            f"- The request is from a logged-in user named '{first_name}' with UserID: {user_id}.\n"
+            f"- When the user refers to 'me', 'my', or 'I', you MUST use their UserID ({user_id}) to target the operation (e.g., in an `updateUser` mutation).\n"
+        )
+
+    return (
+        "You are an expert GraphQL assistant. Your task is to convert the user's natural language request "
+        "into a single, valid GraphQL operation that adheres strictly to the provided schema. "
+        "Return ONLY the GraphQL operation with no explanations or markdown fences."
+        f"{context_str}"
+        "\n\nKey Instructions:\n"
+        "- To filter users by experience, use the `yearsOfExperience_gte: Int` argument. For '5 years of experience', use `users(yearsOfExperience_gte: 5)`.\n"
+        "- To filter users by citizenship, use the `isUSCitizen: Boolean` argument. For 'who are US citizens', use `users(isUSCitizen: true)`.\n"
+        "- When a user wants to **ADD** skills to **their own profile**, you **MUST** use the `addSkillsToUser` mutation. For all other user profile updates, use `updateUser`.\n"
+        "- When a user asks about **'my applications'**, you **MUST** use the `applications` query and filter it using the `userId` from the context.\n"
+        "- When a user wants to **'add a note'** to their application, you **MUST** use the `addNoteToApplicationByJob` mutation.\n"
+        "- When a user asks **'how many applications'** or for a **'count of applicants'**, you **MUST** query the relevant job and include the `applicationCount` field.\n"
+        "- When a user wants to **UPDATE the STATUS** of an application (e.g., 'interview', 'reject', 'hire'), you **MUST** use the `updateApplicationStatusByNames` mutation. **For this mutation, you MUST extract the candidate's full name, the exact job title, and the company name.**\n" # <--- UPDATED INSTRUCTION
+        "- When a user wants to see **applicants**, **candidates**, or people who **applied** for a job, you **MUST** query the `jobs` field with a filter and request the nested `applicants` field within it.\n"
+        "- When a user wants to **ADD** skills to a job, you **MUST** use the `addSkillsToJob` mutation. For all other job updates, use the `updateJob` mutation.\n"
+        "- When a user wants to **UPDATE** a job by its title and company (e.g., 'update the Senior Python Developer job at Google'), you **MUST** use the `updateJobByFields` mutation with the title and company as identifiers.\n"
+        "- To set a **citizenship requirement** for a job, use `updateJobByFields(..., input: {requires_us_citizenship: true})` or `updateJob(..., input: {requires_us_citizenship: true})`.\n"
+        "- To set a **minimum degree year** for a job, use `updateJobByFields(..., input: {minimum_degree_year: 2015})` or `updateJob(..., input: {minimum_degree_year: 2015})`.\n"
+        "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation.\n"
+        "- When a user wants to **DELETE** or **REMOVE** a job using its title and company, you **MUST** use the `deleteJobByFields` mutation.\n"
+        "- For other actions, use the appropriate query or mutation.\n"
+        "- If the user's request cannot be mapped to any field in the schema, return the single word: INVALID.\n"
+        "- Do not make up fields or assume logic not present in the schema.\n\n"
+        "Schema:\n"
+        f"{schema_sdl}\n\n"
+        "User request:\n"
+        f"\"{user_text}\""
+    )
+
+def extract_graphql(text: str) -> str:
+    """Extracts a GraphQL query from a markdown block or plain text."""
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            if "query" in part or "mutation" in part or "{" in part:
+                return part.replace("graphql", "").strip()
+    return text.strip()
+
+# --- UPDATED Service Processor (Keeps the userContext logic) ---
+def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, graphql_executor_fn, user_context: Optional[dict]):
+    small_talk_response = handle_small_talk(user_text)
+    if small_talk_response:
+        return small_talk_response
+    
+    if not OLLAMA_API_KEY:
+        return json_error("NL2GQL Service Error: OLLAMA_API_KEY is missing in environment configuration.", 500)
+        
+    prompt = build_nl2gql_prompt(user_text, schema_sdl, user_context)
+
+    headers = {"Authorization": f"Bearer {OLLAMA_API_KEY}"}
+
+    try:
+        resp = requests.post(
+            OLLAMA_GENERATE_URL,
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            headers=headers,
+            timeout=90,
+        )
+    except requests.exceptions.RequestException as e:
+        return json_error(f"Ollama network error: {e}", 502)
+
+    if not resp.ok:
+        try:
+            err_details = resp.json().get("error", resp.text)
+            return json_error(f"LLM Error {resp.status_code}: {err_details}", 502)
+        except (json.JSONDecodeError, ValueError):
+            return json_error(f"Ollama returned a non-JSON error (Status: {resp.status_code}).", 502)
+
+    try:
+        gen_body = resp.json()
+        gen = gen_body.get("response", "")
+        gql = extract_graphql(gen)
+    except (ValueError, IndexError):
+        return json_error("Failed to parse the response from the LLM.", 502)
+
+    if not gql or gql.strip().upper() == "INVALID":
+        return json_error("Your request could not be mapped to a valid operation. Please try rephrasing.", 400)
+
+    if not run_graphql:
+        return {"graphql": gql}, 200
+
+    success, result = graphql_executor_fn({"query": gql})
+    
+    wrapped_error = unwrap_graphql_errors(result)
+    if wrapped_error:
+        return wrapped_error 
+
+    return {"graphql": gql, "result": result}, (200 if success else 400)
 </file>
 
 <file path="src/backend/resolvers/application_resolvers.py">
@@ -6434,195 +5886,205 @@ def resolve_application_by_id(*_, appId):
     return to_application_output(doc)
 </file>
 
-<file path="src/backend/services/nl2gql_service.py">
-# src/backend/services/nl2gql_service.py
-import os
-import requests
-import json
-from typing import Optional
-from dotenv import load_dotenv
+<file path="src/frontend-react/src/App.js">
+// src/frontend-react/src/App.js
+import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import './App.css';
+import LoginPage from './LoginPage';
+import ResultsDisplay from './ResultsDisplay';
+import apiClient from './api';
+import ResumeUploader from './ResumeUploader'; // Import the new uploader component
+import CompleteProfilePage from './CompleteProfilePage';
+import SchedulingPanel from './SchedulingPanel';
 
-env_path = os.path.join(os.path.dirname(__file__), '../../.env')
-load_dotenv(dotenv_path=env_path)
+function ChatPage() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [uploadTarget, setUploadTarget] = useState(null); // State to trigger the uploader UI
+  // --- NEW: Scheduling State ---
+  const [schedulingTarget, setSchedulingTarget] = useState(null); // {candidateId, jobId, candidateName, jobTitle}
+  // -----------------------------
 
-from ..errors import json_error, unwrap_graphql_errors
-
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "https://ollama.com")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:120b-cloud")
-OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
-OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
-
-
-# --- RESTORED: The more comprehensive small talk handler ---
-def handle_small_talk(user_text: str):
-    """
-    Checks for a wide range of conversational phrases (greetings, idioms, etc.)
-    and returns a predefined friendly response to bypass the LLM.
-    """
-    clean_text = user_text.lower().strip()
-    words = clean_text.split()
+  // --- This effect checks for a valid, non-expired session on component load ---
+  useEffect(() => {
+    const sessionJSON = localStorage.getItem('session');
     
-    # --- Category 1: Direct Matches (Greetings, Gratitude, Interjections) ---
-    small_talk_map = {
-        "hi": "Hello there! How can I assist with your job data today?",
-        "hello": "Hi! I'm ready to convert your requests into GraphQL. What can I do?",
-        "hey": "Hey! Let me know what data you need to query or update.",
-        "greetings": "Greetings! I'm here to help with your job portal data via NL2GQL.",
-        "thanks": "You're welcome! I'm happy to help.",
-        "thank you": "My pleasure! Just ask if you have more queries.",
-        "wow": "Glad to impress! Do you have a query for me?",
-        "cool": "I think so too! Ready for your next command.",
-        "awesome": "I strive for excellence! Ready for a command.",
-        "oops": "Mistakes happen! Please try your query again.",
-        "sorry": "No worries at all. What is your request?",
-        "how are you": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
-        "what's up": "Just monitoring the database for your requests. What can I do for you?",
-        "how are you doing today": "I'm a GraphQL assistant, operating perfectly! What query can I run for you?",
+    if (sessionJSON) {
+      const session = JSON.parse(sessionJSON);
+      const now = new Date().getTime();
+
+      if (now > session.expiresAt) {
+        localStorage.removeItem('session');
+        navigate('/login');
+      } else {
+        setUser(session.user);
+      }
+    } else {
+      navigate('/login');
     }
-    
-    # --- Category 2: Idioms, Common Phrases & Discourse Markers (Keyword Matching) ---
-    keyword_responses = {
-        "by the way": "Interesting point. Do you have a job or user query for me?",
-        "i mean": "I understand. Please formulate your query clearly.",
-        "just saying": "Got it. I'm waiting for a command that maps to GraphQL.",
-        "you know": "I know what you mean. Focus on what data you need.",
-        "hold on": "Okay, I'll hold. Let me know when you have a request.",
-        "excuse me": "No problem. How can I help with the data?",
-        "can you help me": "Absolutely! I can help by converting your request into a GraphQL query.",
-        "can i ask": "You can ask. I can answer if it involves querying or mutating job portal data.",
+  }, [navigate]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('session');
+    setUser(null);
+    navigate('/login');
+  };
+
+  // --- State and handlers for chat functionality ---
+  const [messages, setMessages] = useState([
+    { type: 'text', role: 'assistant', payload: { text: "Hi! Ask me anything about users or jobs." } }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+
+  // Effect to apply the theme to the document
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
+
+  const formatContentForDisplay = (content) => {
+    return content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  };
+
+  // --- NEW: Function to initiate scheduling from a component (like ResultsDisplay) ---
+  const handleInitiateScheduling = (candidateId, jobId, candidateName, jobTitle) => {
+    setSchedulingTarget({ candidateId, jobId, candidateName, jobTitle });
+  };
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+
+    const userPrompt = input.trim();
+    setMessages(prev => [...prev, { type: 'text', role: 'user', payload: { text: userPrompt } }]);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const payload = { 
+        query: userPrompt,
+        userContext: user
+      };
+      
+      const response = await apiClient.post('/nl2gql', payload);
+      const { graphql = "", result = {} } = response.data;
+
+      // Check for a successful 'apply' mutation to trigger the resume uploader
+      if (result.data?.apply) {
+        const application = result.data.apply;
+        setUploadTarget({
+          appId: application.appId,
+          jobTitle: application.job.title,
+        });
+        // Add the success message to the chat first
+        setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
+      }
+      else if (graphql === "Small talk handled by service logic" && result.response) {
+        setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: result.response } }]);
+      } else {
+        setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
+      }
+    } catch (error) {
+      const err_msg = error.response?.data?.error?.message || "An unexpected error occurred while connecting to the service.";
+      setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: `**Error:** ${err_msg}` } }]);
+    } finally {
+      setLoading(false);
     }
-    
-    default_response_payload = {
-        "graphql": "Small talk handled by service logic", 
-        "result": {
-            "response": (
-                "Hello! I'm your GraphQL assistant. I can help with job portal data. "
-                "Try asking me to:\n- **Find** jobs: *find jobs for Java developer in London*\n"
-                "- **Update** your profile: *update my professional title to Senior Developer*"
-            )
-        }
-    }
-    
-    # 1. Check for Direct Matches
-    if clean_text in small_talk_map:
-        return {"graphql": "Small talk handled by service logic", "result": {"response": small_talk_map[clean_text]}}, 200
-        
-    # 2. Check for Keyword Matches
-    for key, response in keyword_responses.items():
-        if key in clean_text:
-            return {"graphql": "Small talk handled by service logic", "result": {"response": response}}, 200
+  };
 
-    # 3. Check for short multi-word greetings or questions to the bot
-    if words:
-        is_greeting = words[0] in ["hi", "hello", "hey"]
-        is_vocative = "assistant" in words or "bot" in words or "jobchat" in words
-        
-        if (is_greeting or is_vocative) and len(words) <= 5:
-            # Return the default, guiding response for these cases
-            return default_response_payload, 200
-        
-    return None
+  // Render nothing until the authentication check is complete
+  if (!user) {
+    return null;
+  }
 
-# --- UPDATED Prompt Builder (Keeps the userContext logic) ---
-def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[dict]) -> str:
-    context_str = ""
-    if user_context and user_context.get("UserID"):
-        user_id = user_context["UserID"]
-        first_name = user_context.get("firstName", "the user")
-        context_str = (
-            f"\n\nContext:\n"
-            f"- The request is from a logged-in user named '{first_name}' with UserID: {user_id}.\n"
-            f"- When the user refers to 'me', 'my', or 'I', you MUST use their UserID ({user_id}) to target the operation (e.g., in an `updateUser` mutation).\n"
-        )
+  // --- JSX for the ChatPage component ---
+  return (
+    <div className="App">
+      <div className="header-container">
+        <h1>JobChat.AI</h1>
+        <div className="header-controls">
+          <span className="user-greeting">Hi, {user.firstName}! ({user.role})</span>
+          <button onClick={toggleTheme} className="theme-toggle">
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
+          <button onClick={handleLogout} className="logout-button" title="Logout">
+            Logout
+          </button>
+        </div>
+      </div>
 
-    return (
-        "You are an expert GraphQL assistant. Your task is to convert the user's natural language request "
-        "into a single, valid GraphQL operation that adheres strictly to the provided schema. "
-        "Return ONLY the GraphQL operation with no explanations or markdown fences."
-        f"{context_str}"
-        "\n\nKey Instructions:\n"
-        "- To filter users by experience, use the `yearsOfExperience_gte: Int` argument. For '5 years of experience', use `users(yearsOfExperience_gte: 5)`.\n"
-        "- To filter users by citizenship, use the `isUSCitizen: Boolean` argument. For 'who are US citizens', use `users(isUSCitizen: true)`.\n"
-        "- When a user wants to **ADD** skills to **their own profile**, you **MUST** use the `addSkillsToUser` mutation. For all other user profile updates, use `updateUser`.\n"
-        "- When a user asks about **'my applications'**, you **MUST** use the `applications` query and filter it using the `userId` from the context.\n"
-        "- When a user wants to **'add a note'** to their application, you **MUST** use the `addNoteToApplicationByJob` mutation.\n"
-        "- When a user asks **'how many applications'** or for a **'count of applicants'**, you **MUST** query the relevant job and include the `applicationCount` field.\n"
-        "- When a user wants to **UPDATE the STATUS** of an application (e.g., 'interview', 'reject', 'hire'), you **MUST** use the `updateApplicationStatusByNames` mutation. **For this mutation, you MUST extract the candidate's full name, the exact job title, and the company name.**\n" # <--- UPDATED INSTRUCTION
-        "- When a user wants to see **applicants**, **candidates**, or people who **applied** for a job, you **MUST** query the `jobs` field with a filter and request the nested `applicants` field within it.\n"
-        "- When a user wants to **ADD** skills to a job, you **MUST** use the `addSkillsToJob` mutation. For all other job updates, use the `updateJob` mutation.\n"
-        "- When a user wants to **UPDATE** a job by its title and company (e.g., 'update the Senior Python Developer job at Google'), you **MUST** use the `updateJobByFields` mutation with the title and company as identifiers.\n"
-        "- To set a **citizenship requirement** for a job, use `updateJobByFields(..., input: {requires_us_citizenship: true})` or `updateJob(..., input: {requires_us_citizenship: true})`.\n"
-        "- To set a **minimum degree year** for a job, use `updateJobByFields(..., input: {minimum_degree_year: 2015})` or `updateJob(..., input: {minimum_degree_year: 2015})`.\n"
-        "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation.\n"
-        "- When a user wants to **DELETE** or **REMOVE** a job using its title and company, you **MUST** use the `deleteJobByFields` mutation.\n"
-        "- For other actions, use the appropriate query or mutation.\n"
-        "- If the user's request cannot be mapped to any field in the schema, return the single word: INVALID.\n"
-        "- Do not make up fields or assume logic not present in the schema.\n\n"
-        "Schema:\n"
-        f"{schema_sdl}\n\n"
-        "User request:\n"
-        f"\"{user_text}\""
-    )
+      {user.role === 'Recruiter' && (
+        <div className="recruiter-panel">
+          <p>Recruiter Tools: You can now post jobs. Try asking: "create a job for a Senior Python Developer at Google..."</p>
+        </div>
+      )}
 
-def extract_graphql(text: str) -> str:
-    """Extracts a GraphQL query from a markdown block or plain text."""
-    if "```" in text:
-        parts = text.split("```")
-        for part in parts:
-            if "query" in part or "mutation" in part or "{" in part:
-                return part.replace("graphql", "").strip()
-    return text.strip()
+      <div className="message-container">
+        {messages.map((m, index) => (
+          <div key={index} className={`message ${m.role}-message`}>
+            {m.type === 'results' ? (
+              <ResultsDisplay rawGql={m.payload.rawGql} rawJson={m.payload.rawJson} onInviteClick={handleInitiateScheduling} />
+            ) : (
+              <div
+                className="message-bubble"
+                dangerouslySetInnerHTML={{ __html: formatContentForDisplay(m.payload.text) }}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      
+      {/* Conditionally render the ResumeUploader when a target is set */}
+      {uploadTarget && (
+        <ResumeUploader 
+          target={uploadTarget} 
+          onComplete={() => setUploadTarget(null)} 
+        />
+      )}
+      {/* --- NEW: Scheduling Component --- */}
+      {schedulingTarget && (
+        <SchedulingPanel
+          target={schedulingTarget}
+          onClose={() => setSchedulingTarget(null)}
+          recruiterId={user.UserID}
+        />
+      )}
+      
+      <form onSubmit={handleSend} className="input-form">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type a request like 'find jobs in London'..."
+          disabled={loading || !!uploadTarget || !!schedulingTarget} // <-- Disable input when scheduling
+        />
+        <button type="submit" disabled={loading || !!uploadTarget || !!schedulingTarget}>
+          {loading ? '...' : 'Send'}
+        </button>
+      </form>
+    </div>
+  );
+}
 
-# --- UPDATED Service Processor (Keeps the userContext logic) ---
-def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, graphql_executor_fn, user_context: Optional[dict]):
-    small_talk_response = handle_small_talk(user_text)
-    if small_talk_response:
-        return small_talk_response
-    
-    if not OLLAMA_API_KEY:
-        return json_error("NL2GQL Service Error: OLLAMA_API_KEY is missing in environment configuration.", 500)
-        
-    prompt = build_nl2gql_prompt(user_text, schema_sdl, user_context)
 
-    headers = {"Authorization": f"Bearer {OLLAMA_API_KEY}"}
+// --- Main App Component for Routing ---
+function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/chat" element={<ChatPage />} />
+      <Route path="/complete-profile/:userId" element={<CompleteProfilePage />} />
+      <Route path="/" element={<Navigate to="/chat" />} />
+    </Routes>
+  );
+}
 
-    try:
-        resp = requests.post(
-            OLLAMA_GENERATE_URL,
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            headers=headers,
-            timeout=90,
-        )
-    except requests.exceptions.RequestException as e:
-        return json_error(f"Ollama network error: {e}", 502)
-
-    if not resp.ok:
-        try:
-            err_details = resp.json().get("error", resp.text)
-            return json_error(f"LLM Error {resp.status_code}: {err_details}", 502)
-        except (json.JSONDecodeError, ValueError):
-            return json_error(f"Ollama returned a non-JSON error (Status: {resp.status_code}).", 502)
-
-    try:
-        gen_body = resp.json()
-        gen = gen_body.get("response", "")
-        gql = extract_graphql(gen)
-    except (ValueError, IndexError):
-        return json_error("Failed to parse the response from the LLM.", 502)
-
-    if not gql or gql.strip().upper() == "INVALID":
-        return json_error("Your request could not be mapped to a valid operation. Please try rephrasing.", 400)
-
-    if not run_graphql:
-        return {"graphql": gql}, 200
-
-    success, result = graphql_executor_fn({"query": gql})
-    
-    wrapped_error = unwrap_graphql_errors(result)
-    if wrapped_error:
-        return wrapped_error 
-
-    return {"graphql": gql, "result": result}, (200 if success else 400)
+export default App;
 </file>
 
 <file path="src/backend/app.py">
@@ -6891,190 +6353,6 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
 </file>
 
-<file path="src/frontend-react/src/App.js">
-// src/frontend-react/src/App.js
-import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import './App.css';
-import LoginPage from './LoginPage';
-import ResultsDisplay from './ResultsDisplay';
-import apiClient from './api';
-import ResumeUploader from './ResumeUploader'; // Import the new uploader component
-import CompleteProfilePage from './CompleteProfilePage';
-
-function ChatPage() {
-  const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  const [uploadTarget, setUploadTarget] = useState(null); // State to trigger the uploader UI
-
-  // --- This effect checks for a valid, non-expired session on component load ---
-  useEffect(() => {
-    const sessionJSON = localStorage.getItem('session');
-    
-    if (sessionJSON) {
-      const session = JSON.parse(sessionJSON);
-      const now = new Date().getTime();
-
-      if (now > session.expiresAt) {
-        localStorage.removeItem('session');
-        navigate('/login');
-      } else {
-        setUser(session.user);
-      }
-    } else {
-      navigate('/login');
-    }
-  }, [navigate]);
-
-  const handleLogout = () => {
-    localStorage.removeItem('session');
-    setUser(null);
-    navigate('/login');
-  };
-
-  // --- State and handlers for chat functionality ---
-  const [messages, setMessages] = useState([
-    { type: 'text', role: 'assistant', payload: { text: "Hi! Ask me anything about users or jobs." } }
-  ]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
-
-  // Effect to apply the theme to the document
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
-
-  const formatContentForDisplay = (content) => {
-    return content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  };
-
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
-
-    const userPrompt = input.trim();
-    setMessages(prev => [...prev, { type: 'text', role: 'user', payload: { text: userPrompt } }]);
-    setInput('');
-    setLoading(true);
-
-    try {
-      const payload = { 
-        query: userPrompt,
-        userContext: user
-      };
-      
-      const response = await apiClient.post('/nl2gql', payload);
-      const { graphql = "", result = {} } = response.data;
-
-      // Check for a successful 'apply' mutation to trigger the resume uploader
-      if (result.data?.apply) {
-        const application = result.data.apply;
-        setUploadTarget({
-          appId: application.appId,
-          jobTitle: application.job.title,
-        });
-        // Add the success message to the chat first
-        setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
-      }
-      else if (graphql === "Small talk handled by service logic" && result.response) {
-        setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: result.response } }]);
-      } else {
-        setMessages(prev => [...prev, { type: 'results', role: 'assistant', payload: { rawGql: graphql, rawJson: result } }]);
-      }
-    } catch (error) {
-      const err_msg = error.response?.data?.error?.message || "An unexpected error occurred while connecting to the service.";
-      setMessages(prev => [...prev, { type: 'text', role: 'assistant', payload: { text: `**Error:** ${err_msg}` } }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Render nothing until the authentication check is complete
-  if (!user) {
-    return null;
-  }
-
-  // --- JSX for the ChatPage component ---
-  return (
-    <div className="App">
-      <div className="header-container">
-        <h1>JobChat.AI</h1>
-        <div className="header-controls">
-          <span className="user-greeting">Hi, {user.firstName}! ({user.role})</span>
-          <button onClick={toggleTheme} className="theme-toggle">
-            {theme === 'light' ? '🌙' : '☀️'}
-          </button>
-          <button onClick={handleLogout} className="logout-button" title="Logout">
-            Logout
-          </button>
-        </div>
-      </div>
-
-      {user.role === 'Recruiter' && (
-        <div className="recruiter-panel">
-          <p>Recruiter Tools: You can now post jobs. Try asking: "create a job for a Senior Python Developer at Google..."</p>
-        </div>
-      )}
-
-      <div className="message-container">
-        {messages.map((m, index) => (
-          <div key={index} className={`message ${m.role}-message`}>
-            {m.type === 'results' ? (
-              <ResultsDisplay rawGql={m.payload.rawGql} rawJson={m.payload.rawJson} />
-            ) : (
-              <div
-                className="message-bubble"
-                dangerouslySetInnerHTML={{ __html: formatContentForDisplay(m.payload.text) }}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-      
-      {/* Conditionally render the ResumeUploader when a target is set */}
-      {uploadTarget && (
-        <ResumeUploader 
-          target={uploadTarget} 
-          onComplete={() => setUploadTarget(null)} 
-        />
-      )}
-      
-      <form onSubmit={handleSend} className="input-form">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a request like 'find jobs in London'..."
-          disabled={loading || !!uploadTarget} // Disable input while uploader is active
-        />
-        <button type="submit" disabled={loading || !!uploadTarget}>
-          {loading ? '...' : 'Send'}
-        </button>
-      </form>
-    </div>
-  );
-}
-
-
-// --- Main App Component for Routing ---
-function App() {
-  return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/chat" element={<ChatPage />} />
-      <Route path="/complete-profile/:userId" element={<CompleteProfilePage />} />
-      <Route path="/" element={<Navigate to="/chat" />} />
-    </Routes>
-  );
-}
-
-export default App;
-</file>
-
 <file path="src/backend/schema.graphql">
 # src/backend/schema.graphql
 type User {
@@ -7251,6 +6529,11 @@ type Query {
   Fetches the weekly availability schedule for the logged-in recruiter.
   """
   mySchedule: [AvailabilitySlot!]
+  """
+  Finds conflict-free interview slots for the Recruiter and Candidate.
+  Returns ISO 8601 strings for available start times.
+  """
+  findAvailableSlots(candidateId: Int!, durationMinutes: Int, numDays: Int): [String!]!
 }
 
 type Mutation {

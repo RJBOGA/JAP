@@ -19,7 +19,7 @@ const JobResult = ({ job }) => (
 );
 
 // An enhanced component to render a single, detailed User profile
-const UserResult = ({ user }) => (
+const UserResult = ({ user, onInviteClick }) => (
     <div className="result-item">
         <div className="item-header">
             <span className="item-title">{user.firstName} {user.lastName}</span>
@@ -50,6 +50,22 @@ const UserResult = ({ user }) => (
             {user.linkedin_profile && <a href={user.linkedin_profile} target="_blank" rel="noopener noreferrer">LinkedIn</a>}
             {user.portfolio_url && <a href={user.portfolio_url} target="_blank" rel="noopener noreferrer">Portfolio</a>}
         </div>
+
+        {/* --- NEW: Invite Button (Recruiter View) --- */}
+        {onInviteClick && user.jobId && user.UserID ? (
+             <button 
+                 className="action-button invite-button"
+                 onClick={() => onInviteClick(
+                     user.UserID, 
+                     user.jobId,
+                     `${user.firstName} ${user.lastName}`,
+                     user.jobTitle
+                 )}
+             >
+                 {user.applicationStatus ? `${user.applicationStatus} / Schedule` : 'Schedule Interview'}
+             </button>
+        ) : null}
+        {/* ------------------------------------------ */}
     </div>
 );
 
@@ -70,7 +86,7 @@ const ApplicationResult = ({ app }) => (
 );
 
 
-const ResultsDisplay = ({ rawGql, rawJson }) => {
+const ResultsDisplay = ({ rawGql, rawJson, onInviteClick }) => {
   const [detailsVisible, setDetailsVisible] = useState(false);
 
   let resultsContent = null;
@@ -109,8 +125,8 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
           resultsContent = resultData.jobs.map(job => (
               <div key={job.jobId} className="result-item job-applicant-container">
                   <h3 className="container-title">Applicants for: {job.title} at {job.company}</h3>
-                  {job.applicants.length > 0 ? (
-                      job.applicants.map(applicant => <UserResult key={applicant.UserID} user={applicant} />)
+                      {job.applicants.length > 0 ? (
+                      job.applicants.map(applicant => <UserResult key={applicant.UserID} user={{...applicant, jobId: job.jobId, jobTitle: job.title}} onInviteClick={onInviteClick} />)
                   ) : (
                       <p>No applicants found for this job yet.</p>
                   )}
@@ -124,24 +140,24 @@ const ResultsDisplay = ({ rawGql, rawJson }) => {
             : <p>No jobs found matching your criteria.</p>;
       
       // Handles a list of users
-      } else if (resultData.users && Array.isArray(resultData.users)) {
-          resultsContent = resultData.users.length > 0
-            ? resultData.users.map(user => <UserResult key={user.UserID} user={user} />)
-            : <p>No users found matching your criteria.</p>;
+            } else if (resultData.users && Array.isArray(resultData.users)) {
+                    resultsContent = resultData.users.length > 0
+                        ? resultData.users.map(user => <UserResult key={user.UserID} user={user} onInviteClick={onInviteClick} />)
+                        : <p>No users found matching your criteria.</p>;
 
       // Handles a single user lookup
       } else if (resultData.userById) {
-          resultsContent = <UserResult user={resultData.userById} />;
+          resultsContent = <UserResult user={resultData.userById} onInviteClick={onInviteClick} />;
 
       // Handles a successful user creation or update
       } else if (resultData.createUser || resultData.updateUser || resultData.addSkillsToUser) {
-          const user = resultData.createUser || resultData.updateUser || resultData.addSkillsToUser;
-          resultsContent = (
-            <div>
-              <p>✅ Success! User profile updated:</p>
-              <UserResult user={user} />
-            </div>
-          );
+                    const user = resultData.createUser || resultData.updateUser || resultData.addSkillsToUser;
+                    resultsContent = (
+                        <div>
+                            <p>✅ Success! User profile updated:</p>
+                            <UserResult user={user} onInviteClick={onInviteClick} />
+                        </div>
+                    );
       }
   }
   

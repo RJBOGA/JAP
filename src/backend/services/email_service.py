@@ -56,7 +56,8 @@ def _send_email(to_email: str, subject: str, html_body: str) -> bool:
     except Exception as e:
         # Re-raise the exception after printing for a full traceback
         print(f"ULTIMATE_DEBUG: SMTP FAILURE - {type(e).__name__}: {e}")
-        raise # <-- CRITICAL: Re-raise the exception to force Flask to show the traceback
+        # Don't re-raise here to avoid crashing background threads or resolvers.
+        logger.error(f"SMTP FAILURE: {type(e).__name__}: {e}")
         return False
 
 # def _send_email(to_email: str, subject: str, html_body: str) -> bool:
