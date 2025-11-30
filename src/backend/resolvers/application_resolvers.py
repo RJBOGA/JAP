@@ -1,7 +1,7 @@
 # src/backend/resolvers/application_resolvers.py
 from datetime import datetime
 from ariadne import QueryType, MutationType, ObjectType
-from ..db import next_application_id, to_application_output
+from ..db import next_application_id, to_application_output, interviews_collection
 from ..validators.common_validators import clean_update_input
 from ..repository import user_repo, job_repo, application_repo
 from ..services import email_service
@@ -61,6 +61,16 @@ def resolve_job_applicants(job_obj, info):
     # 2. Get all unique UserIDs
     user_ids = [app.get("userId") for app in applications]
     user_id_to_status = {app.get("userId"): app.get("status") for app in applications} # Map for status lookup
+    user_id_to_resume = {app.get("userId"): app.get("resume_url") for app in applications}
+
+    # --- NEW: Fetch Interview Times ---
+    interviews = list(interviews_collection().find({
+        "jobId": job_id,
+        "candidateId": {"$in": user_ids}
+    }))
+    user_id_to_time = {i.get("candidateId"): i.get("startTime") for i in interviews}
+    # ----------------------------------
+
     if not user_ids: return []
     
     # 3. Fetch User documents
@@ -72,6 +82,10 @@ def resolve_job_applicants(job_obj, info):
         user_output = user_repo.to_user_output(doc)
         # --- NEW: Inject application status into the User object for display ---
         user_output['applicationStatus'] = user_id_to_status.get(doc.get("UserID"), 'Applied') 
+        user_output['resume_url'] = user_id_to_resume.get(doc.get("UserID"))
+        
+        # Inject Interview Time
+        user_output['interviewTime'] = user_id_to_time.get(doc.get("UserID")) # <--- ADD THIS
         output_users.append(user_output)
         
     return output_users # Now each User object has an 'applicationStatus' field

@@ -20,6 +20,8 @@ type User {
   is_us_citizen: Boolean
   highest_degree_year: Int
   applicationStatus: String
+  resume_url: String
+  interviewTime: String 
 }
 input UserInput {
   firstName: String!

@@ -1,196 +1,149 @@
 /* src/frontend-react/src/ResultsDisplay.css */
-.results-display {
-    padding: 15px;
-    border-radius: 18px;
-    background-color: var(--assistant-bubble-bg);
-    color: var(--text-color);
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
-}
 
-.results-summary {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
+/* --- Card Container --- */
 .result-item {
     background-color: var(--card-background);
-    padding: 15px;
-    border-radius: 8px;
+    padding: 20px; /* Increased padding */
+    border-radius: 12px;
     border: 1px solid var(--border-color);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* Consistent spacing between elements */
+    position: relative;
+    transition: transform 0.2s;
 }
 
+.result-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* --- Header Section --- */
 .item-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 5px;
+    align-items: flex-start;
 }
 
 .item-title {
-    font-weight: bold;
-    font-size: 1.1em;
-    color: var(--button-bg);
-}
-
-[data-theme='dark'] .item-title {
-    color: #61dafb;
-}
-
-.item-location {
-    font-size: 0.9em;
-    color: #666;
-}
-[data-theme='dark'] .item-location {
-    color: #aaa;
-}
-
-.item-company {
-    margin-bottom: 10px;
-    font-style: italic;
-}
-
-.item-skills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 10px;
-}
-
-.skill-tag {
-    background-color: var(--assistant-bubble-bg);
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 0.8em;
-}
-
-.details-toggle {
-    margin-top: 15px;
-    text-align: center;
-}
-
-.details-toggle button {
-    background: none;
-    border: 1px solid var(--border-color);
+    font-size: 1.2em;
+    font-weight: 700;
     color: var(--text-color);
-    padding: 6px 12px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 0.9em;
+}
+
+.item-subtitle {
+    color: #666;
+    font-size: 0.95em;
     font-weight: 500;
-}
-
-.details-toggle button:hover {
-    background-color: var(--border-color);
-}
-
-.raw-details {
-    margin-top: 15px;
-    border-top: 1px solid var(--border-color);
-    padding-top: 10px;
-}
-
-.raw-details strong {
-    display: block;
     margin-bottom: 5px;
 }
 
-.raw-details pre {
-    background-color: rgba(0, 0, 0, 0.05);
-    padding: 10px;
-    border-radius: 5px;
-    overflow-x: auto;
-    margin-top: 5px;
-    white-space: pre-wrap;
+/* --- Skills Tags --- */
+.item-skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0;
 }
 
-[data-theme='dark'] .raw-details pre {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-.job-applicant-container {
+.skill-tag {
     background-color: var(--background-color);
-}
-
-.container-title {
-    margin-top: 0;
-    margin-bottom: 15px;
-    font-size: 1.2em;
-    color: var(--text-color);
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 10px;
-}
-
-.status-update-info {
-    line-height: 1.6;
-    font-size: 1.05em;
-}
-
-.application-count-result {
-    font-size: 1.1em;
-    font-weight: 500;
-    text-align: center;
-}
-
-.item-status {
-    font-weight: bold;
+    border: 1px solid var(--border-color);
     padding: 4px 10px;
-    border-radius: 12px;
+    border-radius: 15px;
     font-size: 0.85em;
-    background-color: var(--assistant-bubble-bg);
+    color: var(--text-color);
 }
 
-.item-notes {
+/* --- Links Row (LinkedIn, Portfolio, Resume) --- */
+.item-links {
+    display: flex;
+    align-items: center;
+    gap: 15px;
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px solid var(--border-color);
+}
+
+.item-links a {
+    text-decoration: none;
+    color: var(--button-bg);
     font-size: 0.9em;
-    white-space: pre-wrap; /* Respects line breaks in notes */
+    font-weight: 600;
 }
 
-.citizen-badge {
-    font-size: 0.8em;
-    font-weight: bold;
-    color: #2e7d32;
-    background-color: #e8f5e9;
-    padding: 3px 8px;
-    border-radius: 12px;
+.item-links a:hover {
+    text-decoration: underline;
 }
 
-[data-theme='dark'] .citizen-badge {
-    color: #a5d6a7;
-    background-color: #1b5e20;
+/* Specific style for the Resume Button to make it pop slightly */
+.resume-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background-color: #fff3e0;
+    color: #e65100 !important; /* Override default link color */
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid #ffe0b2;
+    text-decoration: none !important;
+    transition: background-color 0.2s;
 }
 
-.item-status {
-    font-weight: bold;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 0.85em;
-    text-transform: capitalize;
-    background-color: #f0f0f0; /* Default neutral background */
-    color: #333; /* Default text color */
+.resume-link:hover {
+    background-color: #ffe0b2;
 }
 
-/* Specific Status Colors */
-.status-applied {
-    background-color: #e3f2fd; /* Light Blue */
-    color: #1565c0;
+/* Dark mode adjustment for resume link */
+[data-theme='dark'] .resume-link {
+    background-color: #3e2723;
+    color: #ffcc80 !important;
+    border-color: #5d4037;
 }
 
-.status-interviewing, .status-interview {
-    background-color: #fffde7; /* Light Yellow */
-    color: #f9a825;
+/* --- Main Action Button (Schedule / Scheduled) --- */
+.action-button {
+    margin-top: 15px;
+    width: 100%; /* Full width for better mobile touch target */
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.95em;
+    transition: background-color 0.2s;
 }
 
-.status-hired {
-    background-color: #e8f5e9; /* Light Green */
-    color: #2e7d32;
+/* Invite Button (Blue) */
+.invite-button {
+    background-color: var(--button-bg);
+    color: #ffffff;
 }
 
-.status-rejected {
-    background-color: #ffebee; /* Light Red */
+.invite-button:hover {
+    filter: brightness(1.1);
+}
+
+/* Disabled Button (Gray/Green tint) */
+.action-button.disabled-button {
+    background-color: #e8f5e9; /* Very light green background */
+    color: #2e7d32; /* Green text */
+    border: 1px solid #c8e6c9;
+    cursor: default;
+}
+
+/* If rejected */
+.action-button.disabled-button:contains('Rejected') { 
+    /* CSS :contains is pseudo-code, React logic handles class assignment usually, 
+       but for now the generic disabled style is fine. */
+    background-color: #ffebee;
     color: #c62828;
+    border-color: #ffcdd2;
+}
+
+[data-theme='dark'] .action-button.disabled-button {
+    background-color: #1b5e20;
+    color: #a5d6a7;
+    border-color: #2e7d32;
 }

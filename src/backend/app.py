@@ -3,6 +3,7 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import logging 
+from flask import send_from_directory
 
 import bcrypt
 import requests
@@ -74,6 +75,10 @@ def http_error(e): return handle_http_exception(e)
 def value_error(e): return handle_value_error(e)
 @app.errorhandler(Exception)
 def unhandled_exception(e): return handle_generic_exception(e)
+
+@app.route("/resumes/<path:filename>", methods=["GET"])
+def serve_resume(filename):
+    return send_from_directory(RESUME_FOLDER, filename)
 
 # --- GraphQL endpoints ---
 @app.route("/graphql", methods=["GET"])

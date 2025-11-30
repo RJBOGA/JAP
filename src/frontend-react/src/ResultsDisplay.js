@@ -19,55 +19,94 @@ const JobResult = ({ job }) => (
 );
 
 // An enhanced component to render a single, detailed User profile
-const UserResult = ({ user, onInviteClick }) => (
-    <div className="result-item">
-        <div className="item-header">
-            <span className="item-title">{user.firstName} {user.lastName}</span>
-            {user.applicationStatus && <StatusBadge status={user.applicationStatus} />}
-            {user.is_us_citizen && <span className="citizen-badge">✅ US Citizen</span>}
-            <span className="item-location">{user.city && user.country ? `${user.city}, ${user.country}` : ''}</span>
+const UserResult = ({ user, onInviteClick }) => {
+    
+    // --- NEW LOGIC: Determine if button should be disabled ---
+    const status = user.applicationStatus ? user.applicationStatus.toLowerCase() : '';
+    const isScheduled = status.includes('interview') || status === 'hired';
+    const isRejected = status === 'rejected';
+    
+    let buttonText = 'Schedule Interview';
+    
+    if (isScheduled) {
+        if (user.interviewTime) {
+            // Format: "Mon, Dec 1 at 10:00 AM"
+            const date = new Date(user.interviewTime);
+            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
+            const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            buttonText = `✅ Interview: ${dateStr} at ${timeStr}`;
+        } else {
+            buttonText = '✅ Interview Scheduled';
+        }
+    }
+    
+    if (isRejected) buttonText = '❌ Rejected';
+    // -------------------------------------------------------
+
+    return (
+        <div className="result-item">
+            <div className="item-header">
+                <span className="item-title">{user.firstName} {user.lastName}</span>
+                {user.applicationStatus && <StatusBadge status={user.applicationStatus} />}
+                {user.is_us_citizen && <span className="citizen-badge">✅ US Citizen</span>}
+                <span className="item-location">{user.city && user.country ? `${user.city}, ${user.country}` : ''}</span>
+            </div>
+            <div className="item-subtitle">{user.professionalTitle || 'No professional title provided'}</div>
+            
+            {user.years_of_experience != null && (
+                <div className="item-detail">
+                    <strong>Experience:</strong> {user.years_of_experience} years
+                </div>
+            )}
+            {user.highest_qualification && (
+                <div className="item-detail">
+                    <strong>Qualification:</strong> {user.highest_qualification}
+                </div>
+            )}
+
+            {user.skills && user.skills.length > 0 && (
+                <div className="item-skills">
+                    {user.skills.map(skill => <span key={skill} className="skill-tag">{skill}</span>)}
+                </div>
+            )}
+
+            <div className="item-links">
+                {user.linkedin_profile && <a href={user.linkedin_profile} target="_blank" rel="noopener noreferrer">LinkedIn</a>}
+                {user.portfolio_url && <a href={user.portfolio_url} target="_blank" rel="noopener noreferrer">Portfolio</a>}
+                
+                {/* --- NEW: Resume Link --- */}
+                {user.resume_url && (
+                    <a 
+                        href={`http://localhost:8000${user.resume_url}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="resume-link"
+                    >
+                        📄 View Resume
+                    </a>
+                )}
+                {/* ------------------------ */}
+            </div>
+
+            {/* --- UPDATED BUTTON LOGIC --- */}
+            {onInviteClick && user.jobId && user.UserID ? (
+                 <button 
+                     className={`action-button ${isScheduled || isRejected ? 'disabled-button' : 'invite-button'}`}
+                     disabled={isScheduled || isRejected}
+                     onClick={() => onInviteClick(
+                         user.UserID, 
+                         user.jobId,
+                         `${user.firstName} ${user.lastName}`,
+                         user.jobTitle
+                     )}
+                 >
+                     {buttonText}
+                 </button>
+            ) : null}
+            {/* ------------------------------------------ */}
         </div>
-        <div className="item-subtitle">{user.professionalTitle || 'No professional title provided'}</div>
-        
-        {user.years_of_experience != null && (
-            <div className="item-detail">
-                <strong>Experience:</strong> {user.years_of_experience} years
-            </div>
-        )}
-        {user.highest_qualification && (
-            <div className="item-detail">
-                <strong>Qualification:</strong> {user.highest_qualification}
-            </div>
-        )}
-
-        {user.skills && user.skills.length > 0 && (
-            <div className="item-skills">
-                {user.skills.map(skill => <span key={skill} className="skill-tag">{skill}</span>)}
-            </div>
-        )}
-
-        <div className="item-links">
-            {user.linkedin_profile && <a href={user.linkedin_profile} target="_blank" rel="noopener noreferrer">LinkedIn</a>}
-            {user.portfolio_url && <a href={user.portfolio_url} target="_blank" rel="noopener noreferrer">Portfolio</a>}
-        </div>
-
-        {/* --- NEW: Invite Button (Recruiter View) --- */}
-        {onInviteClick && user.jobId && user.UserID ? (
-             <button 
-                 className="action-button invite-button"
-                 onClick={() => onInviteClick(
-                     user.UserID, 
-                     user.jobId,
-                     `${user.firstName} ${user.lastName}`,
-                     user.jobTitle
-                 )}
-             >
-                 {user.applicationStatus ? `${user.applicationStatus} / Schedule` : 'Schedule Interview'}
-             </button>
-        ) : null}
-        {/* ------------------------------------------ */}
-    </div>
-);
+    );
+};
 
 // A helper component to render an application card (for user's own applications)
 const ApplicationResult = ({ app }) => (
