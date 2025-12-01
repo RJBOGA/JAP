@@ -21,8 +21,18 @@ mutation = MutationType()
 
 @query.field("jobs")
 def resolve_jobs(obj, info, limit=None, skip=None, company=None, location=None, title=None, posterUserId=None):
-    # No authorization check needed here. Anyone can search for jobs.
+    # 1. Build the basic search filter
     q = build_job_filter(company, location, title, posterUserId)
+    
+    # 2. RBAC: Filter out Closed jobs for Applicants
+    user_role = info.context.get("user_role")
+    
+    # If user is NOT a Recruiter (i.e., Applicant or unauthenticated), hide Closed jobs
+    if user_role != "Recruiter":
+        # This matches anything that is NOT "Closed" (includes "Open" and null)
+        q["status"] = {"$ne": "Closed"}
+
+    # 3. Execute Query
     docs = find_jobs(q, skip, limit)
     return [to_job_output(d) for d in docs]
 

@@ -19,4 +19,4 @@ IDE files
 
 /src/backend/resumes/
 # Ignore all .env files
-**/.env
+# **/.env
