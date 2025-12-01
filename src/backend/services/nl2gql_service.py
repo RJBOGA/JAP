@@ -2,6 +2,7 @@
 import os
 import requests
 import json
+from datetime import datetime
 from typing import Optional
 from dotenv import load_dotenv
 
@@ -88,6 +89,10 @@ def handle_small_talk(user_text: str):
 
 # --- UPDATED Prompt Builder (Keeps the userContext logic) ---
 def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[dict]) -> str:
+    # 1. Get Current Context for the AI
+    current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_day = datetime.now().strftime("%A") # e.g., "Monday"
+    
     context_str = ""
     if user_context and user_context.get("UserID"):
         user_id = user_context["UserID"]
@@ -99,6 +104,7 @@ def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[
         )
 
     return (
+        f"Current System Time: {current_time_str} ({current_day}).\n" # <--- INJECT TIME
         "You are an expert GraphQL assistant. Your task is to convert the user's natural language request "
         "into a single, valid GraphQL operation that adheres strictly to the provided schema. "
         "Return ONLY the GraphQL operation with no explanations or markdown fences."
@@ -121,6 +127,8 @@ def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[
         "- For other actions, use the appropriate query or mutation.\n"
         "- If the user's request cannot be mapped to any field in the schema, return the single word: INVALID.\n"
         "- Do not make up fields or assume logic not present in the schema.\n\n"
+        "- If the user asks to **'schedule'**, **'book'**, or **'invite'** a candidate for an interview, you MUST use the `bookInterviewByNaturalLanguage` mutation. Calculate the `startTimeISO` based on the Current System Time provided above (e.g., 'next friday 10am' -> 'YYYY-MM-DDTHH:MM:00').\n"
+        "- Do not make up fields. Return only the GraphQL.\n\n"
         "Schema:\n"
         f"{schema_sdl}\n\n"
         "User request:\n"

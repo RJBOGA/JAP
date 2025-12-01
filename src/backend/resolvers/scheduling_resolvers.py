@@ -8,6 +8,64 @@ query = QueryType()
 mutation = MutationType()
 interview = ObjectType("Interview") 
 
+# --- Mutation Resolvers ---
+@mutation.field("bookInterviewByNaturalLanguage")
+def resolve_book_interview_nl(_, info, candidateName, jobTitle, startTimeISO, companyName=None):
+    # 1. Security Check
+    user_id = info.context.get("UserID")
+    user_role = info.context.get("user_role")
+    if not user_id or user_role != "Recruiter":
+        raise PermissionError("Access denied: Only a Recruiter can book interviews.")
+
+    # 2. Resolve Candidate Name -> ID
+    name_parts = candidateName.strip().split()
+    first_name = name_parts[0]
+    # Handle single names vs full names
+    last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else None
+    
+    # We search loosely to be forgiving to the AI
+    q_user = user_repo.build_filter(first_name, last_name, None)
+    candidates = user_repo.find_users(q_user, None, None)
+    
+    if not candidates:
+        raise ValueError(f"Candidate named '{candidateName}' not found.")
+    if len(candidates) > 1:
+        # Simple heuristic: pick the first one, or throw error if too ambiguous
+        pass 
+    candidate_id = candidates[0]['UserID']
+
+    # 3. Resolve Job Title -> ID
+    q_job = job_repo.build_job_filter(companyName, None, jobTitle)
+    jobs = job_repo.find_jobs(q_job, None, None)
+    
+    if not jobs:
+        raise ValueError(f"Job '{jobTitle}' not found.")
+    job_id = jobs[0]['jobId']
+
+    # 4. Parse Time and Calculate End Time
+    try:
+        # Sanitize ISO string from AI (remove Z if present)
+        if startTimeISO.endswith('Z'): startTimeISO = startTimeISO[:-1]
+        start_dt = datetime.fromisoformat(startTimeISO)
+        
+        # Default duration is 30 minutes
+        end_dt = start_dt + timedelta(minutes=30)
+    except ValueError:
+        raise ValueError(f"Invalid date format provided ({startTimeISO}). Please try again.")
+
+    # 5. Delegate to Core Service
+    # This ensures conflict checking and email sending happen exactly like the manual flow
+    return scheduling_service.book_interview(
+        job_id=job_id,
+        candidate_id=candidate_id,
+        recruiter_id=user_id,
+        start_time=start_dt,
+        end_time=end_dt
+    )
+
+# --- Mutation Resolvers ---
+@mutation.field("setMyAvailability") 
+
 # --- Query Resolvers ---
 
 

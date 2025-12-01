@@ -5378,9 +5378,7 @@ const JobResult = ({ job }) => (
 );
 
 // An enhanced component to render a single, detailed User profile
-const UserResult = ({ user, onInviteClick }) => {
-    
-    // --- NEW LOGIC: Determine if button should be disabled ---
+const UserResult = ({ user, onInviteClick, currentUserRole }) => {
     // Local state to update UI immediately after clicking Hire/Reject
     const [localStatus, setLocalStatus] = useState(user.applicationStatus);
     const [loading, setLoading] = useState(false);
@@ -5399,12 +5397,9 @@ const UserResult = ({ user, onInviteClick }) => {
         if (user.interviewTime) {
             const interviewDate = new Date(user.interviewTime);
             const now = new Date();
-            
-            // Check if interview time has passed
             if (now > interviewDate) {
                 isInterviewPassed = true;
             }
-
             const dateStr = interviewDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             const timeStr = interviewDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
             buttonText = `✅ Interview: ${dateStr} at ${timeStr}`;
@@ -5435,11 +5430,11 @@ const UserResult = ({ user, onInviteClick }) => {
                 `,
                 variables: {
                     userName: `${user.firstName} ${user.lastName}`,
-                    jobTitle: user.jobTitle, // Ensure this exists from the parent query
+                    jobTitle: user.jobTitle,
                     newStatus: newStatus
                 }
             });
-            setLocalStatus(newStatus); // Update UI locally
+            setLocalStatus(newStatus);
         } catch (err) {
             alert("Failed to update status. Check console.");
             console.error(err);
@@ -5448,6 +5443,9 @@ const UserResult = ({ user, onInviteClick }) => {
         }
     };
     // --------------------------------------
+
+    // --- NEW: Security Check ---
+    const isRecruiter = currentUserRole === 'Recruiter';
 
     return (
         <div className="result-item">
@@ -5459,51 +5457,54 @@ const UserResult = ({ user, onInviteClick }) => {
                 <span className="item-location">{user.city && user.country ? `${user.city}, ${user.country}` : ''}</span>
             </div>
             
-            <div className="item-subtitle">{user.professionalTitle || 'No professional title provided'}</div>
+            <div className="item-subtitle">{user.professionalTitle || '------------'}</div>
 
             {/* Skills & Details (Same as before) */}
             {user.years_of_experience != null && <div><strong>Experience:</strong> {user.years_of_experience} years</div>}
             {user.highest_qualification && <div><strong>Qualification:</strong> {user.highest_qualification}</div>}
+            
             {user.skills && user.skills.length > 0 && (
                 <div className="item-skills">
                     {user.skills.map(skill => <span key={skill} className="skill-tag">{skill}</span>)}
                 </div>
             )}
 
-            {/* Links Row (Same as before) */}
-            <div className="item-links">
-                {user.linkedin_profile && <a href={user.linkedin_profile} target="_blank" rel="noopener noreferrer">LinkedIn</a>}
-                {user.portfolio_url && <a href={user.portfolio_url} target="_blank" rel="noopener noreferrer">Portfolio</a>}
-                {user.resume_url && (
-                    <a href={`http://localhost:8000${user.resume_url}`} target="_blank" rel="noopener noreferrer" className="resume-link">📄 View Resume</a>
-                )}
-            </div>
+            
+                        <div className="item-links">
+                            {user.linkedin_profile && <a href={user.linkedin_profile} target="_blank" rel="noopener noreferrer">LinkedIn</a>}
+                            {user.portfolio_url && <a href={user.portfolio_url} target="_blank" rel="noopener noreferrer">Portfolio</a>}
+                            {user.resume_url ? (
+                                <a href={`http://localhost:8000${user.resume_url}`} target="_blank" rel="noopener noreferrer" className="resume-link">📄 View Resume</a>
+                            ) : (
+                                <span className="no-resume">No Resume</span>
+                            )}
+                        </div>
 
-            {/* --- ACTION AREA --- */}
-            <div className="action-area">
-                {/* 1. If Interviewing AND Time Passed: Show Hire/Reject Buttons */}
-                {isScheduled && isInterviewPassed && !loading ? (
-                    <div className="decision-buttons">
-                        <button className="decision-btn hire-btn" onClick={() => handleDecision("Hired")}>
-                            🎉 Hire
-                        </button>
-                        <button className="decision-btn reject-btn" onClick={() => handleDecision("Rejected")}>
-                            ❌ Reject
-                        </button>
-                    </div>
-                ) : (
-                    // 2. Otherwise: Show the standard status button (Schedule, Scheduled, Hired, Rejected)
-                    onInviteClick && user.jobId && user.UserID && (
-                        <button 
-                            className={`action-button ${isScheduled || isRejected || isHired ? 'disabled-button' : 'invite-button'}`}
-                            disabled={isScheduled || isRejected || isHired || loading}
-                            onClick={() => onInviteClick(user.UserID, user.jobId, `${user.firstName} ${user.lastName}`, user.jobTitle)}
-                        >
-                            {loading ? 'Updating...' : buttonText}
-                        </button>
-                    )
-                )}
-            </div>
+                        {/* --- ACTION AREA: ONLY SHOW FOR RECRUITERS --- */}
+            {isRecruiter && (
+                <div className="action-area">
+                    {isScheduled && isInterviewPassed && !loading ? (
+                        <div className="decision-buttons">
+                            <button className="decision-btn hire-btn" onClick={() => handleDecision("Hired")}>
+                                🎉 Hire
+                            </button>
+                            <button className="decision-btn reject-btn" onClick={() => handleDecision("Rejected")}>
+                                ❌ Reject
+                            </button>
+                        </div>
+                    ) : (
+                        onInviteClick && user.jobId && user.UserID && (
+                            <button 
+                                className={`action-button ${isScheduled || isRejected || isHired ? 'disabled-button' : 'invite-button'}`}
+                                disabled={isScheduled || isRejected || isHired || loading}
+                                onClick={() => onInviteClick(user.UserID, user.jobId, `${user.firstName} ${user.lastName}`, user.jobTitle)}
+                            >
+                                {loading ? 'Updating...' : buttonText}
+                            </button>
+                        )
+                    )}
+                </div>
+            )}
         </div>
     );
 };
@@ -5525,7 +5526,7 @@ const ApplicationResult = ({ app }) => (
 );
 
 
-const ResultsDisplay = ({ rawGql, rawJson, onInviteClick }) => {
+const ResultsDisplay = ({ rawGql, rawJson, onInviteClick, currentUserRole }) => {
   const [detailsVisible, setDetailsVisible] = useState(false);
 
   let resultsContent = null;
@@ -5701,6 +5702,12 @@ def _handle_hired_status_side_effects(job_id, hired_user_id):
 # --- FIELD RESOLVERS ---
 @job.field("applicants") 
 def resolve_job_applicants(job_obj, info):
+    # --- SECURITY CHECK ---
+    # If the user is NOT a recruiter, return an empty list or None
+    if info.context.get("user_role") != "Recruiter":
+        return []
+    # ----------------------
+
     job_id = job_obj.get("jobId")
     if not job_id: return []
     
@@ -6112,7 +6119,12 @@ function ChatPage() {
         {messages.map((m, index) => (
           <div key={index} className={`message ${m.role}-message`}>
             {m.type === 'results' ? (
-              <ResultsDisplay rawGql={m.payload.rawGql} rawJson={m.payload.rawJson} onInviteClick={handleInitiateScheduling} />
+              <ResultsDisplay 
+                rawGql={m.payload.rawGql} 
+                rawJson={m.payload.rawJson} 
+                onInviteClick={handleInitiateScheduling}
+                currentUserRole={user.role}
+              />
             ) : (
               <div
                 className="message-bubble"

@@ -51,6 +51,12 @@ def _handle_hired_status_side_effects(job_id, hired_user_id):
 # --- FIELD RESOLVERS ---
 @job.field("applicants") 
 def resolve_job_applicants(job_obj, info):
+    # --- SECURITY CHECK ---
+    # If the user is NOT a recruiter, return an empty list or None
+    if info.context.get("user_role") != "Recruiter":
+        return []
+    # ----------------------
+
     job_id = job_obj.get("jobId")
     if not job_id: return []
     

@@ -233,4 +233,14 @@ type Mutation {
   Books a new interview slot. The system performs a final conflict check before booking.
   """
   bookInterview(jobId: Int!, candidateId: Int!, startTime: String!, endTime: String!): Interview
+
+  """
+  Books an interview using natural language names and dates.
+  """
+  bookInterviewByNaturalLanguage(
+    candidateName: String!
+    jobTitle: String!
+    companyName: String
+    startTimeISO: String!
+  ): Interview
 }
