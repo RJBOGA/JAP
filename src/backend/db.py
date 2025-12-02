@@ -1,10 +1,9 @@
-# db.py
+# src/backend/db.py
 import os
 from datetime import datetime
 from dotenv import load_dotenv
 from pymongo import MongoClient, ReturnDocument
 
-# ... (no changes to MONGO_URI, DB_NAME, _client, _db, get_db)
 load_dotenv(os.path.join(os.path.dirname(__file__), '../../config/.env'))
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 DB_NAME = os.getenv("DB_NAME", "jobtracker")
@@ -13,7 +12,6 @@ _db = _client[DB_NAME]
 def get_db():
     return _db
 
-
 # --- Collection Helpers ---
 def users_collection():
     return _db["users"]
@@ -21,22 +19,23 @@ def users_collection():
 def jobs_collection():
     return _db["jobs"]
 
-def applications_collection(): # New
+def applications_collection():
     return _db["applications"]
 
 def counters_collection():
     return _db["counters"]
 
-
-# --- NEW: Scheduling Collections ---
 def schedules_collection():
     return _db["schedules"]
 
 def interviews_collection():
     return _db["interviews"]
 
+# --- NEW: Resumes Collection ---
+def resumes_collection():
+    return _db["resumes"]
 
-# --- Counters (User, Job, and new Application counter) ---
+# --- Counters ---
 def _ensure_counter(counter_id: str):
     counters_collection().update_one(
         {"_id": counter_id},
@@ -65,23 +64,28 @@ def ensure_job_counter():
 def next_job_id():
     return _next_id("jobId")
 
-def ensure_application_counter(): # New
+def ensure_application_counter():
     _ensure_counter("appId")
 
-def next_application_id(): # New
+def next_application_id():
     return _next_id("appId")
 
-
-# --- NEW: Interview Counters ---
 def ensure_interview_counter():
     _ensure_counter("interviewId")
 
 def next_interview_id():
     return _next_id("interviewId")
 
+# --- NEW: Resume Counter ---
+def ensure_resume_counter():
+    _ensure_counter("resumeId")
 
-# --- Output Formatting (no changes to user/job, new for application) ---
-def to_user_output(doc: dict): # ... no changes
+def next_resume_id():
+    return _next_id("resumeId")
+
+
+# --- Output Formatting ---
+def to_user_output(doc: dict):
     if not doc:
         return None
     return {
@@ -93,7 +97,7 @@ def to_user_output(doc: dict): # ... no changes
         "Summary": doc.get("Summary"),
     }
 
-def to_job_output(doc: dict): # ... no changes
+def to_job_output(doc: dict):
     if not doc:
         return None
     return {
@@ -107,7 +111,7 @@ def to_job_output(doc: dict): # ... no changes
         "postedAt": doc.get("postedAt"),
     }
 
-def to_application_output(doc: dict): # New
+def to_application_output(doc: dict):
     if not doc:
         return None
     return {
@@ -120,5 +124,5 @@ def to_application_output(doc: dict): # New
         "userName": doc.get("userName"),
         "jobTitle": doc.get("jobTitle"),
         "companyName": doc.get("companyName"),
-        "emailSent": doc.get("emailSent"), # <-- NEW
+        "emailSent": doc.get("emailSent"),
     }

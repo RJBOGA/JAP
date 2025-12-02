@@ -1,4 +1,15 @@
 # src/backend/schema.graphql
+
+type Resume {
+  resumeId: Int!
+  userId: Int!
+  filename: String
+  url: String
+  uploadedAt: String
+  calculatedExperience: Int
+  skills: [String]
+}
+
 type User {
   UserID: Int!
   email: String!
@@ -22,7 +33,9 @@ type User {
   applicationStatus: String
   resume_url: String
   interviewTime: String 
+  resumes: [Resume!]  # <--- NEW FIELD
 }
+
 input UserInput {
   firstName: String!
   lastName: String!
@@ -40,6 +53,7 @@ input UserInput {
   skills: [String]
   professionalTitle: String
 }
+
 input UserUpdateInput {
   firstName: String
   lastName: String
@@ -57,6 +71,7 @@ input UserUpdateInput {
   is_us_citizen: Boolean
   highest_degree_year: Int
 }
+
 type Job {
   jobId: Int!
   title: String!
@@ -74,6 +89,7 @@ type Job {
   posterUserId: Int
   posterName: String
 }
+
 input JobInput {
   title: String!
   company: String
@@ -83,6 +99,7 @@ input JobInput {
   description: String
   requires_us_citizenship: Boolean
 }
+
 input JobUpdateInput {
   title: String
   company: String
@@ -94,6 +111,7 @@ input JobUpdateInput {
   minimum_degree_year: Int
   status: String
 }
+
 type Application {
   appId: Int!
   userId: Int!
@@ -104,29 +122,27 @@ type Application {
   candidate: User
   job: Job
   resume_url: String
-  # Denormalized fields for easier querying
   userName: String
   jobTitle: String
   companyName: String
-  emailSent: String # Track email status
+  emailSent: String
 }
+
 input ApplicationInput {
   userId: Int!
   jobId: Int!
   notes: String
 }
+
 input ApplicationUpdateInput {
   status: String
   notes: String
 }
 
-"""
-Represents a single block of a recruiter's weekly availability.
-"""
 type AvailabilitySlot {
-  dayOfWeek: String! # e.g., "Monday", "Tuesday"
-  startTime: String! # e.g., "09:00"
-  endTime: String!   # e.g., "17:00"
+  dayOfWeek: String!
+  startTime: String!
+  endTime: String!
 }
 
 input AvailabilityInput {
@@ -135,18 +151,15 @@ input AvailabilityInput {
   endTime: String!
 }
 
-"""
-Represents a confirmed interview booking.
-"""
 type Interview {
   interviewId: Int!
   jobId: Int!
   candidateId: Int!
   recruiterId: Int!
-  startTime: String! # ISO 8601 UTC timestamp
-  endTime: String!   # ISO 8601 UTC timestamp
-  job: Job           # <-- Field Resolver will fetch job details
-  candidate: User    # <-- Field Resolver will fetch candidate details
+  startTime: String!
+  endTime: String!
+  job: Job
+  candidate: User
 }
 
 type Query {
@@ -172,25 +185,14 @@ type Query {
   jobById(jobId: Int!): Job
   applications(userId: Int, jobId: Int, status: String): [Application!]!
   applicationById(appId: Int!): Application
-  """
-  Fetches the weekly availability schedule for the logged-in recruiter.
-  """
   mySchedule: [AvailabilitySlot!]
-  """
-  Finds conflict-free interview slots for the Recruiter and Candidate.
-  Returns ISO 8601 strings for available start times.
-  """
   findAvailableSlots(candidateId: Int!, durationMinutes: Int, numDays: Int): [String!]!
 }
 
 type Mutation {
   createUser(input: UserInput!): User!
   updateUser(UserID: Int!, input: UserUpdateInput!): User!
-  updateUserByName(
-    firstName: String
-    lastName: String
-    input: UserUpdateInput!
-  ): User!
+  updateUserByName(firstName: String, lastName: String, input: UserUpdateInput!): User!
   deleteUser(UserID: Int!): Boolean!
   deleteUserByFields(firstName: String, lastName: String, dob: String): Boolean!
   createJob(input: JobInput!): Job!
@@ -214,34 +216,28 @@ type Mutation {
     note: String!
     companyName: String
   ): Application
-  """
-  Allows a Recruiter to add private notes to a candidate's application.
-  """
   addManagerNoteToApplication(
     userName: String!
     jobTitle: String!
     companyName: String
     note: String!
   ): Application
-
-  """
-  Sets the recurring weekly availability for the logged-in recruiter.
-  This will overwrite any existing schedule.
-  """
   setMyAvailability(availability: [AvailabilityInput!]!): Boolean!
-
-  """
-  Books a new interview slot. The system performs a final conflict check before booking.
-  """
   bookInterview(jobId: Int!, candidateId: Int!, startTime: String!, endTime: String!): Interview
-
-  """
-  Books an interview using natural language names and dates.
-  """
   bookInterviewByNaturalLanguage(
     candidateName: String!
     jobTitle: String!
     companyName: String
     startTimeISO: String!
   ): Interview
+
+  # --- NEW MUTATIONS FOR FEATURE 2.2.6 ---
+  applyWithResume(
+    userName: String!
+    jobTitle: String!
+    companyName: String
+    resumeId: Int!
+  ): Application!
+
+  deleteResume(resumeId: Int!): Boolean!
 }

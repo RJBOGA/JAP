@@ -1,12 +1,13 @@
 # src/backend/resolvers/user_resolvers.py
-from ariadne import QueryType, MutationType
+from ariadne import QueryType, MutationType, ObjectType
 from datetime import datetime
 from ..validators.common_validators import require_non_empty_str, validate_date_str, clean_update_input
-from ..repository import user_repo
+from ..repository import user_repo, resume_repo
 from ..db import next_user_id
 
 query = QueryType()
 mutation = MutationType()
+user_object = ObjectType("User")
 
 @query.field("users")
 def resolve_users(*_, limit=None, skip=None, firstName=None, lastName=None, dob=None, skills=None, isUSCitizen=None, yearsOfExperience_gte=None):
@@ -72,3 +73,9 @@ def resolve_add_skills_to_user(obj, info, UserID, skills):
     updated_user = user_repo.add_skills_to_user(UserID, skills)
     if not updated_user: raise ValueError(f"User with ID {UserID} not found.")
     return user_repo.to_user_output(updated_user)
+
+@user_object.field("resumes")
+def resolve_user_resumes(user_obj, info):
+    user_id = user_obj.get("UserID")
+    if not user_id: return []
+    return resume_repo.find_resumes_by_user(user_id)

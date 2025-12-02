@@ -3,7 +3,7 @@ from datetime import datetime
 from ariadne import QueryType, MutationType, ObjectType
 from ..db import next_application_id, to_application_output, interviews_collection
 from ..validators.common_validators import clean_update_input
-from ..repository import user_repo, job_repo, application_repo
+from ..repository import user_repo, job_repo, application_repo, resume_repo
 from ..services import email_service
 import threading
 import logging # <-- NEW IMPORT
@@ -330,6 +330,48 @@ def resolve_add_manager_note_to_application(obj, info, userName, jobTitle, note,
 
     updated_app = application_repo.update_one_application({"appId": target_app_id}, {"notes": updated_notes})
     if not updated_app: raise ValueError("Failed to add note.")
+    return to_application_output(updated_app)
+
+@mutation.field("applyWithResume")
+def resolve_apply_with_resume(obj, info, userName, jobTitle, resumeId, companyName=None):
+    from ..repository import user_repo, job_repo, application_repo
+    
+    name_parts = userName.strip().split()
+    first_name = name_parts[0]
+    
+    user_filter = user_repo.build_filter(first_name, None, None, None)
+    matching_users = user_repo.find_users(user_filter, None, None)
+    if not matching_users: raise ValueError("User not found")
+    user = matching_users[0]
+    
+    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
+    matching_jobs = job_repo.find_jobs(job_filter, None, None)
+    if not matching_jobs: raise ValueError("Job not found")
+    job = matching_jobs[0]
+    
+    resume = resume_repo.find_resume_by_id(resumeId)
+    if not resume: raise ValueError(f"Resume {resumeId} not found.")
+    if resume["userId"] != user["UserID"]: raise ValueError("You do not own this resume.")
+    
+    app_input = {
+        "userId": user["UserID"],
+        "jobId": job["jobId"],
+        "userName": userName,
+        "jobTitle": jobTitle,
+        "companyName": companyName
+    }
+    
+    new_app = resolve_create_application(None, info, input=app_input)
+    
+    application_repo.update_one_application(
+        {"appId": new_app["appId"]},
+        {
+            "resume_url": resume["url"],
+            "notes": f"Applied using specific resume: {resume.get('filename')}"
+        }
+    )
+    
+    updated_app = application_repo.find_application_by_id(new_app["appId"])
     return to_application_output(updated_app)
 
 # --- Ensure correct Query object is exposed for ariadne schema build ---
