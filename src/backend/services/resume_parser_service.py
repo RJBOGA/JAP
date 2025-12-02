@@ -4,32 +4,43 @@ import json
 from typing import Optional, Dict
 import pypdf
 import docx
-
-from .nl2gql_service import OLLAMA_HOST, OLLAMA_MODEL, OLLAMA_API_KEY # Reuse existing config
-from ..repository import user_repo
 import requests
+
+# Reuse existing configuration from the NL2GQL service
+from .nl2gql_service import OLLAMA_HOST, OLLAMA_MODEL, OLLAMA_API_KEY
+from ..repository import user_repo
 
 def _extract_text_from_pdf(file_path: str) -> str:
     """Extracts text content from a PDF file."""
-    with open(file_path, 'rb') as f:
-        reader = pypdf.PdfReader(f)
-        text = "".join(page.extract_text() for page in reader.pages)
-    return text
+    try:
+        with open(file_path, 'rb') as f:
+            reader = pypdf.PdfReader(f)
+            text = "".join(page.extract_text() for page in reader.pages)
+        return text
+    except Exception as e:
+        print(f"Error reading PDF: {e}")
+        return ""
 
 def _extract_text_from_docx(file_path: str) -> str:
     """Extracts text content from a DOCX file."""
-    doc = docx.Document(file_path)
-    return "\n".join(para.text for para in doc.paragraphs)
+    try:
+        doc = docx.Document(file_path)
+        return "\n".join(para.text for para in doc.paragraphs)
+    except Exception as e:
+        print(f"Error reading DOCX: {e}")
+        return ""
 
 def _get_llm_parsed_data(resume_text: str) -> Optional[dict]:
     """Sends resume text to the LLM for structured data extraction."""
-    # --- UPDATED, MORE DETAILED PROMPT ---
+    
+    # --- UPDATED PROMPT FOR US CITIZEN VALIDATION ---
     prompt = (
         "You are an expert HR assistant. Analyze the following resume text and extract the "
         "specified fields into a valid JSON object. The fields are: "
         "'skills' (a list of key technical skills), "
         "'years_of_experience' (an integer, calculated if necessary), "
-        "'is_us_citizen' (a boolean, infer this from phrases like 'US Citizen' or work authorization, default to false if unclear), "
+        # CRITICAL: Strict parsing for Citizenship to support the validation feature
+        "'is_us_citizen' (boolean: true ONLY if the text explicitly states 'US Citizen', 'United States Citizen', or 'US National'. If 'Visa', 'Green Card', 'Permanent Resident', or if citizenship is unspecified, set to false), "
         "'highest_degree_year' (an integer representing the graduation year of the highest degree mentioned), "
         "'professionalTitle' (the user's most recent job title, e.g., 'Software Engineer'), "
         "'city' (the user's city of residence), "
@@ -65,6 +76,7 @@ def parse_resume_and_update_user(file_path: str, user_id: int):
     try:
         _, file_extension = os.path.splitext(file_path)
         raw_text = ""
+        
         if file_extension.lower() == '.pdf':
             raw_text = _extract_text_from_pdf(file_path)
         elif file_extension.lower() == '.docx':
@@ -82,20 +94,26 @@ def parse_resume_and_update_user(file_path: str, user_id: int):
             print("LLM parsing failed or returned no data.")
             return
             
-        # --- UPDATED: Allow more fields to be updated ---
-        update_doc = {k: v for k, v in parsed_data.items() if k in [
+        # Filter strictly for fields we want to update
+        allowed_fields = [
             'skills', 'years_of_experience', 'is_us_citizen', 'highest_degree_year',
             'professionalTitle', 'city', 'country', 'highest_qualification'
-        ]}
+        ]
+        
+        update_doc = {k: v for k, v in parsed_data.items() if k in allowed_fields and v is not None}
 
         if update_doc:
+            # Handle skills specially (addToSet usually, but here we might merge)
             if 'skills' in update_doc and isinstance(update_doc['skills'], list):
-                user_repo.add_skills_to_user(user_id, update_doc.pop('skills'))
+                # We pull skills out to use the specific repo method that appends them
+                skills_to_add = update_doc.pop('skills')
+                user_repo.add_skills_to_user(user_id, skills_to_add)
 
+            # Update the rest of the fields (including is_us_citizen)
             if update_doc:
                 user_repo.update_one({"UserID": user_id}, update_doc)
             
-            print(f"Successfully updated user {user_id} profile from resume with data: {update_doc}")
+            print(f"Successfully updated user {user_id} profile from resume. Data: {update_doc}")
 
     except Exception as e:
         print(f"An unexpected error occurred during resume processing: {e}")

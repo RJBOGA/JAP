@@ -135,13 +135,27 @@ def resolve_application_job(app_obj, _):
 @mutation.field("createApplication")
 def resolve_create_application(*_, input):
     user_id, job_id = input.get("userId"), input.get("jobId")
-    if not user_repo.find_one_by_id(user_id): raise ValueError(f"Validation failed: User with ID {user_id} does not exist.")
-    if not job_repo.find_job_by_id(job_id): raise ValueError(f"Validation failed: Job with ID {job_id} does not exist.")
     
-    # Check for duplicate application
+    # 1. Fetch User and Job
+    user = user_repo.find_one_by_id(user_id)
+    job = job_repo.find_job_by_id(job_id)
+
+    if not user: raise ValueError(f"Validation failed: User {user_id} not found.")
+    if not job: raise ValueError(f"Validation failed: Job {job_id} not found.")
+    
+    # --- CITIZENSHIP VALIDATION ---
+    if job.get("requires_us_citizenship", False):
+        user_is_citizen = user.get("is_us_citizen", False)
+        if not user_is_citizen:
+            raise ValueError(
+                "Application Failed: This position strictly requires US Citizenship. "
+                "Your profile does not verify this status."
+            )
+    # ------------------------------
+
     existing_app = application_repo.find_applications({"userId": user_id, "jobId": job_id})
     if existing_app:
-         raise ValueError(f"Duplicate application: This user has already applied to this job (AppID: {existing_app[0]['appId']}).")
+         raise ValueError(f"Duplicate application: You have already applied (AppID: {existing_app[0]['appId']}).")
 
     doc = {
         "appId": next_application_id(), "userId": user_id, "jobId": job_id,

@@ -73,6 +73,7 @@ def resolve_create_job(obj, info, input):
         "status": "Open",
         "posterUserId": user_id,
         "posterName": poster_name if poster_name else None,
+        "requires_us_citizenship": input.get("requires_us_citizenship", False) 
     }
     insert_job(doc)
     return to_job_output(doc)

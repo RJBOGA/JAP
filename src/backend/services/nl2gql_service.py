@@ -104,7 +104,7 @@ def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[
         )
 
     return (
-        f"Current System Time: {current_time_str} ({current_day}).\n" # <--- INJECT TIME
+        f"Current System Time: {current_time_str} ({current_day}).\n"
         "You are an expert GraphQL assistant. Your task is to convert the user's natural language request "
         "into a single, valid GraphQL operation that adheres strictly to the provided schema. "
         "Return ONLY the GraphQL operation with no explanations or markdown fences."
@@ -118,11 +118,15 @@ def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[
         "- When a user asks **'how many applications'** or for a **'count of applicants'**, you **MUST** query the relevant job and include the `applicationCount` field.\n"
         "- If the user says **'Hire [Name]'** or **'Lets hire [Name]'**, you MUST use the `updateApplicationStatusByNames` mutation with `newStatus: \"Hired\"`. Extract the `jobTitle` and `companyName` from the user's request.\n"
         "- If the user says **'Reject [Name]'**, use `updateApplicationStatusByNames` with `newStatus: \"Rejected\"`.\n"
-        "- When a user wants to **UPDATE the STATUS** of an application (e.g., 'interview', 'reject', 'hire'), you **MUST** use the `updateApplicationStatusByNames` mutation. **For this mutation, you MUST extract the candidate's full name, the exact job title, and the company name.**\n" # <--- UPDATED INSTRUCTION
+        "- When a user wants to **UPDATE the STATUS** of an application (e.g., 'interview', 'reject', 'hire'), you **MUST** use the `updateApplicationStatusByNames` mutation. **For this mutation, you MUST extract the candidate's full name, the exact job title, and the company name.**\n"
         "- When a user wants to see **applicants**, **candidates**, or people who **applied** for a job, you **MUST** query the `jobs` field. **You MUST select `jobId`, `title`, and `company` for the Job itself.** Then request the nested `applicants` field. **For every applicant, you MUST select:** `firstName`, `lastName`, `professionalTitle`, `skills`, `city`, `country`, `applicationStatus`, `resume_url`, `interviewTime`, and `UserID`.\n\n"
         "- When a user wants to **ADD** skills to a job, you **MUST** use the `addSkillsToJob` mutation. For all other job updates, use the `updateJob` mutation.\n"
         "- When a user wants to **UPDATE** a job by its title and company (e.g., 'update the Senior Python Developer job at Google'), you **MUST** use the `updateJobByFields` mutation with the title and company as identifiers.\n"
-        "- To set a **citizenship requirement** for a job, use `updateJobByFields(..., input: {requires_us_citizenship: true})` or `updateJob(..., input: {requires_us_citizenship: true})`.\n"
+        # --- FIXED CITIZENSHIP LOGIC INSTRUCTIONS ---
+        "- **CITIZENSHIP LOGIC (CRITICAL):**\n"
+        "  1. If the user asks to **CREATE** a job with 'US Citizen' requirements, use `createJob(input: {..., requires_us_citizenship: true})`.\n"
+        "  2. If the user asks to **UPDATE** a job to require citizenship, use `updateJobByFields(..., input: {requires_us_citizenship: true})`.\n"
+        # ---------------------------------------------
         "- To set a **minimum degree year** for a job, use `updateJobByFields(..., input: {minimum_degree_year: 2015})` or `updateJob(..., input: {minimum_degree_year: 2015})`.\n"
         "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation.\n"
         "- When a user wants to **DELETE** or **REMOVE** a job using its title and company, you **MUST** use the `deleteJobByFields` mutation.\n"

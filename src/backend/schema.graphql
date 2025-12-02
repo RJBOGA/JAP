@@ -81,6 +81,7 @@ input JobInput {
   salaryRange: String
   skillsRequired: [String]
   description: String
+  requires_us_citizenship: Boolean
 }
 input JobUpdateInput {
   title: String
