@@ -160,6 +160,11 @@ def parse_resume_and_update_user(file_path: str, user_id: int):
             print("LLM parsing failed or returned no data.")
             return
             
+        # --- FIX: Map the LLM's new 'calculated' key to the DB's 'years_of_experience' key ---
+        if "calculated_years_of_experience" in parsed_data:
+            parsed_data["years_of_experience"] = parsed_data["calculated_years_of_experience"]
+        # -------------------------------------------------------------------------------------
+            
         # Filter strictly for fields we want to update
         allowed_fields = [
             'skills', 'years_of_experience', 'is_us_citizen', 'highest_degree_year',

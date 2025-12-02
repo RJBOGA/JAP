@@ -213,10 +213,15 @@ def upload_profile_resume(user_id):
         filename = f"user_{user_id}_profile_{secure_filename(file.filename)}"
         file_path = os.path.join(RESUME_FOLDER, filename)
         file.save(file_path)
+        
+        url = f"/resumes/{filename}"
+        
         try:
-            resume_parser_service.parse_resume_and_update_user(file_path, user_id)
+            # --- CHANGE: Use the new robust service function ---
+            # This ensures experience calculation AND saving to the resumes collection
+            resume_parser_service.process_uploaded_resume(file_path, user_id, file.filename, url)
         except Exception as e:
-            print(f"Error parsing: {e}")
+            print(f"Error triggering profile resume parsing: {e}")
         return jsonify({"message": "Resume uploaded and parsing initiated."}), 200
     return jsonify({"error": "File type not allowed"}), 400
 
