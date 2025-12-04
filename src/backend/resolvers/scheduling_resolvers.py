@@ -10,10 +10,11 @@ interview = ObjectType("Interview")
 
 @query.field("mySchedule")
 def resolve_my_schedule(_, info):
+    # FS.Y1.3: Allowed for Recruiter and Manager
     user_id = info.context.get("UserID")
     user_role = info.context.get("user_role")
-    if not user_id or user_role != "Manager":
-        raise PermissionError("Access denied: Only Managers can view schedules. (FS.X.3)")
+    if not user_id or user_role not in ["Recruiter", "Manager"]:
+        raise PermissionError("Access denied: Only Recruiters or Managers can view schedules.")
 
     from ..db import schedules_collection
     schedule = schedules_collection().find_one({"recruiterId": user_id}) 

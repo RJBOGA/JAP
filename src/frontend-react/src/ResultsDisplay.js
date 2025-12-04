@@ -8,6 +8,10 @@ const InterviewListCard = ({ interview }) => {
     const date = new Date(interview.startTime);
     const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
     const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    // Determine the interviewer name for display
+    const interviewerName = interview.hiringManagerId 
+        ? `${interview.job?.hiringManagerName || 'Hiring Manager'}`
+        : `${interview.job?.posterName || 'Recruiter'}`;
 
     return (
         <div className="result-item interview-card">
@@ -19,7 +23,10 @@ const InterviewListCard = ({ interview }) => {
                 Candidate: <strong>{interview.candidate?.firstName} {interview.candidate?.lastName}</strong>
             </div>
             <div className="item-company">
-                Job: {interview.job?.title} ({interview.job?.company})
+                {interview.job?.title} at {interview.job?.company}
+            </div>
+            <div className="item-details">
+                Interviewer: {interviewerName}
             </div>
         </div>
     );
@@ -161,10 +168,11 @@ const UserResult = ({ user, onInviteClick, currentUserRole }) => {
     );
 };
 
-// --- UPDATED APPLICATION RESULT: Applicant View ---
+// --- UPDATED APPLICATION RESULT: Applicant View (FS.Y2) ---
 const ApplicationResult = ({ app, onSelectSlotClick, currentUserRole }) => {
     const isInviteSent = app.status === 'InterviewInviteSent';
     const isOffered = app.status === 'Offered';
+    const isOfferRejected = app.status === 'Offer Rejected'; // <-- NEW STATUS CHECK
     const isApplicant = currentUserRole === 'Applicant';
 
     const handleApplicantDecision = async (action) => {
@@ -182,7 +190,7 @@ const ApplicationResult = ({ app, onSelectSlotClick, currentUserRole }) => {
             });
             window.location.reload(); // Simple refresh to show new status
         } catch(e) {
-            alert("Action failed: " + e.message);
+            alert("Action failed: " + (e.response?.data?.error?.message || e.message));
         }
     };
 
@@ -190,21 +198,18 @@ const ApplicationResult = ({ app, onSelectSlotClick, currentUserRole }) => {
         <div className="result-item">
             <div className="item-header">
                 <span className="item-title">{app.job?.title || 'N/A'}</span>
-                <span className="item-status">{app.status}</span>
+                <StatusBadge status={app.status} /> {/* Use StatusBadge here */}
             </div>
             <div className="item-company">{app.job?.company || 'N/A'}</div>
-            {app.notes && (
-                <div className="item-notes">
-                    <strong>Your Notes:</strong> {app.notes}
-                </div>
-            )}
+            {/* ... (existing notes remain the same) ... */}
             
-            {/* Applicant Scheduling Action */}
+            {/* Applicant Scheduling Action (FS.2) */}
             {isInviteSent && isApplicant && (
                 <div className="action-area">
                     <p style={{color: '#e65100', fontWeight: 'bold'}}>Action Required: Recruiter has invited you to interview.</p>
                     <button 
                         className="action-button invite-button"
+                        // Passes UserID/JobID/AppID for the SchedulingPanel to function
                         onClick={() => onSelectSlotClick(app.candidate?.UserID || app.userId, app.job?.jobId || app.jobId, app.appId, app.job?.title)}
                     >
                         📅 Schedule Now
@@ -212,7 +217,7 @@ const ApplicationResult = ({ app, onSelectSlotClick, currentUserRole }) => {
                 </div>
             )}
 
-            {/* Applicant Offer Action */}
+            {/* Applicant Offer Action (FS.Y2) */}
             {isOffered && isApplicant && (
                 <div className="action-area">
                     <p style={{color: '#2e7d32', fontWeight: 'bold', fontSize: '1.1em'}}>🎉 You have received an offer!</p>
@@ -220,6 +225,14 @@ const ApplicationResult = ({ app, onSelectSlotClick, currentUserRole }) => {
                         <button className="decision-btn hire-btn" onClick={() => handleApplicantDecision('Accept')}>✅ Accept Offer</button>
                         <button className="decision-btn reject-btn" onClick={() => handleApplicantDecision('Reject')}>❌ Decline</button>
                     </div>
+                </div>
+            )}
+             {/* Final Status Confirmation (Hired/Rejected) */}
+            {(app.status === 'Hired' || isOfferRejected) && isApplicant && (
+                <div className="action-area">
+                    <p style={{color: app.status === 'Hired' ? '#2e7d32' : '#c62828', fontWeight: 'bold', fontSize: '1.1em'}}>
+                        {app.status === 'Hired' ? '🎉 Final Status: Hired!' : '❌ Final Status: Offer Declined.'}
+                    </p>
                 </div>
             )}
         </div>
