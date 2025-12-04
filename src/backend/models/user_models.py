@@ -5,13 +5,14 @@ from enum import Enum
 class UserProfileType(Enum):
     APPLICANT = "Applicant"
     RECRUITER = "Recruiter"
+    MANAGER = "Manager" # <--- NEW ROLE
 
     @classmethod
     def from_str(cls, value: str):
         try:
             return cls(value.title())
         except ValueError:
-            raise ValueError(f"Invalid ProfileType: {value}. Must be one of: Applicant, Recruiter")
+            raise ValueError(f"Invalid ProfileType: {value}. Must be one of: Applicant, Recruiter, Manager")
             
 def get_user_profile_types():
     return [e.value for e in UserProfileType]

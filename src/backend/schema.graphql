@@ -88,6 +88,9 @@ type Job {
   status: String
   posterUserId: Int
   posterName: String
+  # --- NEW FIELDS ---
+  hiringManagerId: Int
+  hiringManagerName: String
 }
 
 input JobInput {
@@ -98,6 +101,8 @@ input JobInput {
   skillsRequired: [String]
   description: String
   requires_us_citizenship: Boolean
+  hiringManagerId: Int
+  hiringManagerName: String
 }
 
 input JobUpdateInput {
@@ -110,6 +115,8 @@ input JobUpdateInput {
   requires_us_citizenship: Boolean
   minimum_degree_year: Int
   status: String
+  hiringManagerId: Int
+  hiringManagerName: String
 }
 
 type Application {
@@ -156,6 +163,7 @@ type Interview {
   jobId: Int!
   candidateId: Int!
   recruiterId: Int!
+  hiringManagerId: Int
   startTime: String!
   endTime: String!
   job: Job
@@ -186,7 +194,12 @@ type Query {
   applications(userId: Int, jobId: Int, status: String): [Application!]!
   applicationById(appId: Int!): Application
   mySchedule: [AvailabilitySlot!]
-  findAvailableSlots(candidateId: Int!, durationMinutes: Int, numDays: Int): [String!]!
+  findAvailableSlots(
+    jobId: Int!
+    candidateId: Int!
+    durationMinutes: Int
+    numDays: Int
+  ): [String!]!
 }
 
 type Mutation {

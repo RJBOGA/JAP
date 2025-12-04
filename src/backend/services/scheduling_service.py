@@ -10,25 +10,39 @@ def parse_iso(date_str):
     return datetime.fromisoformat(date_str)
 
 def set_recruiter_availability(recruiter_id: int, availability_data: list):
+    """
+    Sets the weekly availability for a recruiter or manager.
+    """
     from ..db import schedules_collection
-    schedules_collection().update_one(
-        {"recruiterId": recruiter_id},
-        {"$set": {"availability": availability_data, "recruiterId": recruiter_id}},
-        upsert=True
-    )
-    return True
+    
+    try:
+        schedules_collection().update_one(
+            {"recruiterId": recruiter_id},
+            {"$set": {"availability": availability_data, "recruiterId": recruiter_id}},
+            upsert=True
+        )
+        return True # <--- CRITICAL: Must return True for GraphQL Boolean! field
+    except Exception as e:
+        logger.error(f"Error setting availability: {e}")
+        return False
 
 def find_open_slots(recruiter_id: int, candidate_id: int, start_date: datetime, end_date: datetime, duration_minutes: int = 30):
     from ..db import schedules_collection, interviews_collection
     
+    # Note: 'recruiter_id' is the UserID of the person whose calendar we are checking.
     # 1. Get Schedule
     schedule = schedules_collection().find_one({"recruiterId": recruiter_id})
     if not schedule or not schedule.get("availability"):
         return [] # No availability set
 
     # 2. Get Bookings
+    # CRITICAL UPDATE: Check if this person is booked as a Recruiter OR as a Hiring Manager
     booked = list(interviews_collection().find({
-        "$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
+        "$or": [
+            {"recruiterId": recruiter_id}, 
+            {"hiringManagerId": recruiter_id}, # <--- Checks the new field
+            {"candidateId": candidate_id}
+        ],
         "startTime": {"$gte": start_date.isoformat()},
         "endTime": {"$lte": end_date.isoformat()}
     }))
@@ -76,25 +90,39 @@ def find_open_slots(recruiter_id: int, candidate_id: int, start_date: datetime, 
         
     return open_slots
 
-def book_interview(job_id, candidate_id, recruiter_id, start_time, end_time):
+def book_interview(job_id, candidate_id, recruiter_id, start_time, end_time, hiring_manager_id=None):
     from ..db import interviews_collection, next_interview_id
     from ..repository.application_repo import update_one_application
     from ..repository import user_repo, job_repo
     from ..services.email_service import send_interview_invitation
     
+    # Identify who needs to be checked for conflicts (The Interviewer)
+    # If a Manager is assigned, they are the interviewer. If not, the Recruiter is.
+    interviewer_to_check = hiring_manager_id if hiring_manager_id else recruiter_id
+    
     # Conflict Check
-    conflict = interviews_collection().find_one({
-        "$or": [{"recruiterId": recruiter_id}, {"candidateId": candidate_id}],
+    conflict_query = {
+        "$or": [
+            {"recruiterId": interviewer_to_check},
+            {"hiringManagerId": interviewer_to_check}, # <--- Checks new field
+            {"candidateId": candidate_id}
+        ],
         "startTime": {"$lt": end_time.isoformat()},
         "endTime": {"$gt": start_time.isoformat()}
-    })
+    }
     
+    conflict = interviews_collection().find_one(conflict_query)
     if conflict: raise ValueError("Conflict detected. Slot unavailable.")
 
+    # Save Document with Separate Fields
     doc = {
         "interviewId": next_interview_id(),
-        "jobId": job_id, "candidateId": candidate_id, "recruiterId": recruiter_id,
-        "startTime": start_time.isoformat(), "endTime": end_time.isoformat()
+        "jobId": job_id, 
+        "candidateId": candidate_id, 
+        "recruiterId": recruiter_id,          # The Coordinator (Alice)
+        "hiringManagerId": hiring_manager_id, # The Interviewer (Sarah)
+        "startTime": start_time.isoformat(), 
+        "endTime": end_time.isoformat()
     }
     interviews_collection().insert_one(doc)
     

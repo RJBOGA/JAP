@@ -126,9 +126,16 @@ def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[
         "- **CITIZENSHIP LOGIC (CRITICAL):**\n"
         "  1. If the user asks to **CREATE** a job with 'US Citizen' requirements, use `createJob(input: {..., requires_us_citizenship: true})`.\n"
         "  2. If the user asks to **UPDATE** a job to require citizenship, use `updateJobByFields(..., input: {requires_us_citizenship: true})`.\n"
-        # ---------------------------------------------
+        # --- HIRING MANAGER LOGIC (NEW) ---
+        "- **HIRING MANAGER LOGIC (CRITICAL):**\n"
+        "  1. If the user specifies a Hiring Manager by name (e.g., 'Sarah Connor'), put that name string into the `hiringManagerName` field of the input. Do NOT try to guess an ID.\n"
+        "  2. The `hiringManagerName` field will be looked up and resolved on the backend. Always prefer using the name when the user provides it.\n"
+        # ----------------------------------------
         "- To set a **minimum degree year** for a job, use `updateJobByFields(..., input: {minimum_degree_year: 2015})` or `updateJob(..., input: {minimum_degree_year: 2015})`.\n"
-        "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation.\n"
+        # --- FIXED APPLY INSTRUCTIONS (CRITICAL FOR UI) ---
+        "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation. **You MUST return these specific fields inside the mutation block: { appId status job { title } }** to ensure the UI updates correctly.\n"
+        "- If the user asks to 'apply with my resume' or mentions a specific resume, use the `applyWithResume` mutation.\n"
+        # --------------------------------------------------
         "- When a user wants to **DELETE** or **REMOVE** a job using its title and company, you **MUST** use the `deleteJobByFields` mutation.\n"
         "- For other actions, use the appropriate query or mutation.\n"
         "- If the user's request cannot be mapped to any field in the schema, return the single word: INVALID.\n"

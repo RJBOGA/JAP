@@ -12,13 +12,47 @@ from ..repository.job_repo import (
     to_job_output,
     add_skills_to_job,
 )
+from ..repository import user_repo # <--- Need this to validate Manager ID
 from ..db import next_job_id
 
 query = QueryType()
 mutation = MutationType()
 
-# --- READ Operations (Publicly Accessible) ---
 
+# --- Helper to validate Hiring Manager (Updated for Name Lookup) ---
+def _resolve_manager_info(manager_id=None, manager_name=None):
+    user = None
+    
+    # 1. Try by ID
+    if manager_id:
+        user = user_repo.find_one_by_id(manager_id)
+    # 2. Try by Name
+    elif manager_name:
+        parts = manager_name.strip().split()
+        if len(parts) >= 1:
+            first = parts[0]
+            last = " ".join(parts[1:]) if len(parts) > 1 else None
+            # Use loose matching provided by repo
+            q = user_repo.build_filter(first_name=first, last_name=last, dob=None)
+            # Fetch first match
+            users = user_repo.find_users(q, limit=1, skip=None)
+            if users:
+                user = users[0]
+
+    # 3. Validation
+    if not user:
+        # Only raise error if they actually tried to set a manager
+        if manager_id or manager_name:
+            identifier = manager_id if manager_id else manager_name
+            raise ValueError(f"Hiring Manager '{identifier}' not found.")
+        return None, None
+
+    if user.get("role") not in ["Recruiter", "Manager"]:
+        raise ValueError(f"User {user.get('firstName')} is not a Manager/Recruiter.")
+        
+    return user["UserID"], f"{user['firstName']} {user['lastName']}".strip()
+
+# --- READ Operations ---
 @query.field("jobs")
 def resolve_jobs(obj, info, limit=None, skip=None, company=None, location=None, title=None, posterUserId=None):
     # 1. Build the basic search filter
@@ -28,7 +62,7 @@ def resolve_jobs(obj, info, limit=None, skip=None, company=None, location=None, 
     user_role = info.context.get("user_role")
     
     # If user is NOT a Recruiter (i.e., Applicant or unauthenticated), hide Closed jobs
-    if user_role != "Recruiter":
+    if user_role != "Recruiter" and user_role != "Manager": # Updated to allow Managers to see closed jobs too? Maybe.
         # This matches anything that is NOT "Closed" (includes "Open" and null)
         q["status"] = {"$ne": "Closed"}
 
@@ -61,6 +95,12 @@ def resolve_create_job(obj, info, input):
     user_last_name = info.context.get("lastName", "")
     poster_name = f"{user_first_name} {user_last_name}".strip()
     
+    # --- Resolve Manager (Pass both ID and Name inputs) ---
+    hm_id, hm_name = _resolve_manager_info(
+        input.get("hiringManagerId"), 
+        input.get("hiringManagerName")
+    )
+    
     doc = {
         "jobId": next_job_id(),
         "title": title,
@@ -73,7 +113,10 @@ def resolve_create_job(obj, info, input):
         "status": "Open",
         "posterUserId": user_id,
         "posterName": poster_name if poster_name else None,
-        "requires_us_citizenship": input.get("requires_us_citizenship", False) 
+        "requires_us_citizenship": input.get("requires_us_citizenship", False),
+        # --- NEW FIELDS ---
+        "hiringManagerId": hm_id,
+        "hiringManagerName": hm_name
     }
     insert_job(doc)
     return to_job_output(doc)
@@ -89,6 +132,16 @@ def resolve_update_job(obj, info, jobId, input):
         require_non_empty_str(input["title"], "title")
 
     set_fields = clean_update_input(input)
+    
+    # --- Resolve Manager Update ---
+    if "hiringManagerId" in input or "hiringManagerName" in input:
+        hm_id, hm_name = _resolve_manager_info(
+            input.get("hiringManagerId"), 
+            input.get("hiringManagerName")
+        )
+        set_fields["hiringManagerId"] = hm_id
+        set_fields["hiringManagerName"] = hm_name
+        
     if not set_fields:
         raise ValueError("No fields provided to update.")
 
@@ -139,6 +192,16 @@ def resolve_update_job_by_fields(obj, info, title, input, company=None):
         require_non_empty_str(input["title"], "title")
 
     set_fields = clean_update_input(input)
+    
+    # --- Resolve Manager Update ---
+    if "hiringManagerId" in input or "hiringManagerName" in input:
+        hm_id, hm_name = _resolve_manager_info(
+            input.get("hiringManagerId"), 
+            input.get("hiringManagerName")
+        )
+        set_fields["hiringManagerId"] = hm_id
+        set_fields["hiringManagerName"] = hm_name
+
     if not set_fields:
         raise ValueError("No fields provided to update.")
 

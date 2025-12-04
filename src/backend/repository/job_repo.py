@@ -16,6 +16,8 @@ def to_job_output(doc: dict) -> dict:
         "status": doc.get("status"),
         "posterUserId": doc.get("posterUserId"),
         "posterName": doc.get("posterName"),
+        "hiringManagerId": doc.get("hiringManagerId"),
+        "hiringManagerName": doc.get("hiringManagerName"),
     }
 
 def build_job_filter(company: Optional[str], location: Optional[str], title: Optional[str], poster_user_id: Optional[int] = None) -> Dict[str, Any]:
