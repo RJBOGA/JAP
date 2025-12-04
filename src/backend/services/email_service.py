@@ -129,3 +129,16 @@ def send_rejection_notification(to_email: str, candidate_name: str, job_title: s
     """
     if _send_email(to_email, subject, html_body):
         _audit_email_success(app_id, "Rejected")
+
+# --- NEW FUNCTION FOR FS.2 ---
+def send_scheduling_invite_email(to_email: str, candidate_name: str, job_title: str, company: str, app_id: int):
+    """Sends an email inviting the candidate to log in and select a slot."""
+    subject = f"Action Required: Schedule your Interview for {job_title}"
+    html_body = f"""
+    <p>Hi {candidate_name},</p>
+    <p>We are impressed with your profile and would like to invite you to interview for the <strong>{job_title}</strong> position at <strong>{company}</strong>.</p>
+    <p>Please log in to the JobChat.AI portal to view our availability and select a time slot that works for you.</p>
+    <p>Best regards,<br/>The Hiring Team at {company}</p>
+    """
+    if _send_email(to_email, subject, html_body):
+        _audit_email_success(app_id, "InviteSent")

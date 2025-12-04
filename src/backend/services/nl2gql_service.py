@@ -114,6 +114,7 @@ def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[
         "- To filter users by citizenship, use the `isUSCitizen: Boolean` argument. For 'who are US citizens', use `users(isUSCitizen: true)`.\n"
         "- When a user wants to **ADD** skills to **their own profile**, you **MUST** use the `addSkillsToUser` mutation. For all other user profile updates, use `updateUser`.\n"
         "- When a user asks about **'my applications'**, you **MUST** use the `applications` query and filter it using the `userId` from the context.\n"
+        "  **You MUST select and return these fields for each application:** `{ appId status userId jobId job { jobId title company } notes }`.\n"
         "- When a user wants to **'add a note'** to their application, you **MUST** use the `addNoteToApplicationByJob` mutation.\n"
         "- When a user asks **'how many applications'** or for a **'count of applicants'**, you **MUST** query the relevant job and include the `applicationCount` field.\n"
         "- If the user says **'Hire [Name]'** or **'Lets hire [Name]'**, you MUST use the `updateApplicationStatusByNames` mutation with `newStatus: \"Hired\"`. Extract the `jobTitle` and `companyName` from the user's request.\n"
@@ -131,6 +132,10 @@ def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[
         "  1. If the user specifies a Hiring Manager by name (e.g., 'Sarah Connor'), put that name string into the `hiringManagerName` field of the input. Do NOT try to guess an ID.\n"
         "  2. The `hiringManagerName` field will be looked up and resolved on the backend. Always prefer using the name when the user provides it.\n"
         # ----------------------------------------
+        "- **INVITE FLOW (FS.2):**\n"
+        "  1. If the user asks to 'Invite [Name] to interview' or 'Send interview invite', use `updateApplicationStatusByNames(..., newStatus: \"InterviewInviteSent\")`. This triggers an email inviting the candidate to select a slot.\n"
+        "- **MANAGER DASHBOARD (FS.4):**\n"
+        "  1. If the user asks to see 'my booked interviews', 'scheduled interviews', or 'my calendar', use the `myBookedInterviews` query.\n"
         "- To set a **minimum degree year** for a job, use `updateJobByFields(..., input: {minimum_degree_year: 2015})` or `updateJob(..., input: {minimum_degree_year: 2015})`.\n"
         # --- FIXED APPLY INSTRUCTIONS (CRITICAL FOR UI) ---
         "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation. **You MUST return these specific fields inside the mutation block: { appId status job { title } }** to ensure the UI updates correctly.\n"

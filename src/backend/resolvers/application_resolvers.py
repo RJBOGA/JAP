@@ -34,8 +34,8 @@ def _handle_hired_status_side_effects(job_id, hired_user_id):
         return
 
     for app in other_apps:
-        # Only notify if status is Applied or Interviewing (i.e., not already Rejected)
-        if app.get("status") in ["Applied", "Interviewing"]:
+        # Only notify if status is Applied, Interviewing, or Invite Sent (to avoid notifying already rejected candidates)
+        if app.get("status") in ["Applied", "Interviewing", "InterviewInviteSent"]:
             candidate = user_repo.find_one_by_id(app["userId"])
             if candidate:
                 email_service.send_rejection_notification(
@@ -243,7 +243,15 @@ def resolve_update_application_status_by_names(obj, info, userName, jobTitle, ne
     job = job_repo.find_job_by_id(updated_app["jobId"])
 
     # --- FIX: Use .lower().startswith('interview') for safety ---
-    if newStatus.lower().startswith("interview") and candidate and job:
+    # --- NEW STATUS LOGIC: InterviewInviteSent ---
+    if newStatus == "InterviewInviteSent" and candidate and job:
+        email_service.send_scheduling_invite_email(
+            to_email=candidate["email"], candidate_name=candidate["firstName"],
+            job_title=job["title"], company=job["company"],
+            app_id=updated_app["appId"] 
+        )
+    # Legacy direct status update (manual booking by Recruiter) triggers confirmation
+    elif newStatus.lower().startswith("interview") and newStatus != "InterviewInviteSent" and candidate and job:
         logger.debug("DEBUG_C: Initiating send_interview_invitation.")
         email_service.send_interview_invitation(
             to_email=candidate["email"], candidate_name=candidate["firstName"],

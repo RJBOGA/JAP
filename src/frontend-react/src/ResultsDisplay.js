@@ -1,9 +1,30 @@
 // src/frontend-react/src/ResultsDisplay.js
 import React, { useState } from 'react';
-import apiClient from './api'; // <--- IMPORT THIS
+import apiClient from './api'; 
 import './ResultsDisplay.css';
 
-// A small helper component to render a single Job
+// --- NEW COMPONENT: Interview List Card (Manager Dashboard) ---
+const InterviewListCard = ({ interview }) => {
+    const date = new Date(interview.startTime);
+    const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+    return (
+        <div className="result-item interview-card">
+            <div className="item-header">
+                <span className="item-title">📅 {dateStr} at {timeStr}</span>
+                <span className="item-status status-interviewing">Confirmed</span>
+            </div>
+            <div className="item-subtitle">
+                Candidate: <strong>{interview.candidate?.firstName} {interview.candidate?.lastName}</strong>
+            </div>
+            <div className="item-company">
+                Job: {interview.job?.title} ({interview.job?.company})
+            </div>
+        </div>
+    );
+};
+
 const JobResult = ({ job }) => (
   <div className="result-item">
     <div className="item-header">
@@ -19,43 +40,37 @@ const JobResult = ({ job }) => (
   </div>
 );
 
-// An enhanced component to render a single, detailed User profile
 const UserResult = ({ user, onInviteClick, currentUserRole }) => {
-    // Local state to update UI immediately after clicking Hire/Reject
     const [localStatus, setLocalStatus] = useState(user.applicationStatus);
     const [loading, setLoading] = useState(false);
 
-    // Normalize status
     const status = localStatus ? localStatus.toLowerCase() : '';
-    const isScheduled = status.includes('interview');
+    const isScheduled = status.includes('interview') && !status.includes('invite'); // Interviewing
+    const isInviteSent = status === 'interviewinvitesent';
     const isHired = status === 'hired';
     const isRejected = status === 'rejected';
 
-    // Time Check Logic
-    let isInterviewPassed = false;
-    let buttonText = 'Schedule Interview';
-
-    if (isScheduled) {
-        if (user.interviewTime) {
-            const interviewDate = new Date(user.interviewTime);
-            const now = new Date();
-            if (now > interviewDate) {
-                isInterviewPassed = true;
-            }
-            const dateStr = interviewDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            const timeStr = interviewDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-            buttonText = `✅ Interview: ${dateStr} at ${timeStr}`;
-        } else {
-            buttonText = '✅ Interview Scheduled';
-        }
-    }
+    let buttonText = 'Schedule Interview'; // Default manual booking
+    if (isInviteSent) buttonText = '📩 Invite Sent';
+    if (isScheduled) buttonText = '✅ Interview Scheduled';
     if (isHired) buttonText = '🎉 Hired';
     if (isRejected) buttonText = '❌ Rejected';
 
-    // --- NEW: Handle Hire/Reject Clicks ---
+    // Format interview time if present
+    let interviewDateStr = null;
+    let interviewTimeStr = null;
+    if (user.interviewTime) {
+        try {
+            const dt = new Date(user.interviewTime);
+            interviewDateStr = dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+            interviewTimeStr = dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {
+            // ignore formatting errors
+        }
+    }
+
     const handleDecision = async (newStatus) => {
-        if (!window.confirm(`Are you sure you want to mark this candidate as ${newStatus}? This will send an email.`)) return;
-        
+        if (!window.confirm(`Mark as ${newStatus}?`)) return;
         setLoading(true);
         try {
             await apiClient.post('/graphql', {
@@ -65,9 +80,7 @@ const UserResult = ({ user, onInviteClick, currentUserRole }) => {
                       userName: $userName,
                       jobTitle: $jobTitle,
                       newStatus: $newStatus
-                    ) {
-                      status
-                    }
+                    ) { status }
                   }
                 `,
                 variables: {
@@ -78,20 +91,17 @@ const UserResult = ({ user, onInviteClick, currentUserRole }) => {
             });
             setLocalStatus(newStatus);
         } catch (err) {
-            alert("Failed to update status. Check console.");
             console.error(err);
+            alert("Update failed.");
         } finally {
             setLoading(false);
         }
     };
-    // --------------------------------------
 
-    // --- NEW: Security Check ---
     const isRecruiter = currentUserRole === 'Recruiter';
 
     return (
         <div className="result-item">
-            {/* Header / Info Sections (Same as before) */}
             <div className="item-header">
                 <span className="item-title">{user.firstName} {user.lastName}</span>
                 {localStatus && <StatusBadge status={localStatus} />} 
@@ -100,10 +110,7 @@ const UserResult = ({ user, onInviteClick, currentUserRole }) => {
             </div>
             
             <div className="item-subtitle">{user.professionalTitle || '------------'}</div>
-
-            {/* Skills & Details (Same as before) */}
             {user.years_of_experience != null && <div><strong>Experience:</strong> {user.years_of_experience} years</div>}
-            {user.highest_qualification && <div><strong>Qualification:</strong> {user.highest_qualification}</div>}
             
             {user.skills && user.skills.length > 0 && (
                 <div className="item-skills">
@@ -111,62 +118,63 @@ const UserResult = ({ user, onInviteClick, currentUserRole }) => {
                 </div>
             )}
 
-            
-                        <div className="item-links">
-                            {user.linkedin_profile && <a href={user.linkedin_profile} target="_blank" rel="noopener noreferrer">LinkedIn</a>}
-                            {user.portfolio_url && <a href={user.portfolio_url} target="_blank" rel="noopener noreferrer">Portfolio</a>}
-                            {user.resume_url ? (
-                                <a href={`http://localhost:8000${user.resume_url}`} target="_blank" rel="noopener noreferrer" className="resume-link">📄 View Resume</a>
-                            ) : (
-                                <span className="no-resume">No Resume</span>
-                            )}
-                        </div>
+            <div className="item-links">
+                {user.resume_url && <a href={`http://localhost:8000${user.resume_url}`} target="_blank" rel="noopener noreferrer" className="resume-link">📄 View Resume</a>}
+            </div>
 
-                        {/* --- ACTION AREA: ONLY SHOW FOR RECRUITERS --- */}
             {isRecruiter && (
                 <div className="action-area">
-                    {isScheduled && isInterviewPassed && !loading ? (
-                        <div className="decision-buttons">
-                            <button className="decision-btn hire-btn" onClick={() => handleDecision("Hired")}>
-                                🎉 Hire
-                            </button>
-                            <button className="decision-btn reject-btn" onClick={() => handleDecision("Rejected")}>
-                                ❌ Reject
-                            </button>
-                        </div>
-                    ) : (
-                        onInviteClick && user.jobId && user.UserID && (
-                            <button 
-                                className={`action-button ${isScheduled || isRejected || isHired ? 'disabled-button' : 'invite-button'}`}
-                                disabled={isScheduled || isRejected || isHired || loading}
-                                onClick={() => onInviteClick(user.UserID, user.jobId, `${user.firstName} ${user.lastName}`, user.jobTitle)}
-                            >
-                                {loading ? 'Updating...' : buttonText}
-                            </button>
-                        )
-                    )}
+                    {/* Hire/Reject Buttons */}
+                    <div className="decision-buttons" style={{marginBottom: '10px'}}>
+                         <button className="decision-btn hire-btn" onClick={() => handleDecision("Hired")}>🎉 Hire</button>
+                         <button className="decision-btn reject-btn" onClick={() => handleDecision("Rejected")}>❌ Reject</button>
+                    </div>
+                </div>
+            )}
+
+            {/* If interview is scheduled, show the scheduled time for visibility to all roles */}
+            {isScheduled && interviewDateStr && (
+                <div className="scheduled-time" style={{marginTop: '8px', color: '#444'}}>
+                    <small>Scheduled: {interviewDateStr} at {interviewTimeStr}</small>
                 </div>
             )}
         </div>
     );
 };
 
-// A helper component to render an application card (for user's own applications)
-const ApplicationResult = ({ app }) => (
-    <div className="result-item">
-        <div className="item-header">
-            <span className="item-title">{app.job?.title || 'N/A'}</span>
-            <span className="item-status">{app.status}</span>
-        </div>
-        <div className="item-company">{app.job?.company || 'N/A'}</div>
-        {app.notes && (
-            <div className="item-notes">
-                <strong>Your Notes:</strong> {app.notes}
-            </div>
-        )}
-    </div>
-);
+// --- UPDATED APPLICATION RESULT: Includes "Select Slot" for Applicant ---
+const ApplicationResult = ({ app, onSelectSlotClick, currentUserRole }) => {
+    const isInviteSent = app.status === 'InterviewInviteSent';
+    const isApplicant = currentUserRole === 'Applicant';
 
+    return (
+        <div className="result-item">
+            <div className="item-header">
+                <span className="item-title">{app.job?.title || 'N/A'}</span>
+                <span className="item-status">{app.status}</span>
+            </div>
+            <div className="item-company">{app.job?.company || 'N/A'}</div>
+            {app.notes && (
+                <div className="item-notes">
+                    <strong>Your Notes:</strong> {app.notes}
+                </div>
+            )}
+            
+            {/* Applicant Self-Scheduling Action: STRICT RBAC */}
+            {isInviteSent && isApplicant && (
+                <div className="action-area">
+                    <p style={{color: '#e65100', fontWeight: 'bold'}}>Action Required: Recruiter has invited you to interview.</p>
+                    <button 
+                        className="action-button invite-button"
+                        onClick={() => onSelectSlotClick(app.candidate?.UserID || app.userId, app.job?.jobId || app.jobId, app.appId, app.job?.title)}
+                    >
+                        📅 Schedule Now
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
 
 const ResultsDisplay = ({ rawGql, rawJson, onInviteClick, currentUserRole }) => {
   const [detailsVisible, setDetailsVisible] = useState(false);
@@ -174,79 +182,64 @@ const ResultsDisplay = ({ rawGql, rawJson, onInviteClick, currentUserRole }) => 
   let resultsContent = null;
   const resultData = rawJson?.data;
 
-  // Check for different types of data and prepare the display content
   if (resultData) {
-      // Handles a list of the user's own applications
-      if (resultData.applications && Array.isArray(resultData.applications)) {
+      // --- NEW: Manager Dashboard View ---
+      if (resultData.myBookedInterviews) {
+          resultsContent = (
+              <div className="result-group">
+                  <h3 className="container-title">My Scheduled Interviews</h3>
+                  {resultData.myBookedInterviews.length > 0 ? (
+                      resultData.myBookedInterviews.map(interview => <InterviewListCard key={interview.interviewId} interview={interview} />)
+                  ) : (
+                      <p>No interviews scheduled yet.</p>
+                  )}
+              </div>
+          );
+      }
+      else if (resultData.applications && Array.isArray(resultData.applications)) {
+          // Pass onInviteClick as onSelectSlotClick for Applicant flow (reusing logic in App.js)
           resultsContent = (
               <div className="result-item job-applicant-container">
                   <h3 className="container-title">Your Applications</h3>
                   {resultData.applications.length > 0 ? (
-                      resultData.applications.map(app => <ApplicationResult key={app.appId} app={app} />)
+                      resultData.applications.map(app => <ApplicationResult key={app.appId} app={app} onSelectSlotClick={onInviteClick} currentUserRole={currentUserRole} />)
                   ) : (
                       <p>You have not applied to any jobs yet.</p>
                   )}
               </div>
           );
       }
-      // Handles the result of updating an application status or adding a note
       else if (resultData.updateApplicationStatusByNames || resultData.addNoteToApplicationByJob) {
           const app = resultData.updateApplicationStatusByNames || resultData.addNoteToApplicationByJob;
-          resultsContent = <ApplicationResult app={app} />;
+          resultsContent = <ApplicationResult app={app} currentUserRole={currentUserRole} />;
       }
-      // Handles a request for jobs that includes an application count
-      else if (resultData.jobs && Array.isArray(resultData.jobs) && resultData.jobs[0]?.applicationCount !== undefined) {
-          resultsContent = resultData.jobs.map(job => (
-              <div key={job.jobId} className="result-item application-count-result">
-                  The job "{job.title}" at {job.company} has {job.applicationCount} application's.
-              </div>
-          ));
-      }
-      // Handles a request for jobs with nested applicants
       else if (resultData.jobs && Array.isArray(resultData.jobs) && resultData.jobs[0]?.applicants) {
           resultsContent = resultData.jobs.map(job => (
               <div key={job.jobId} className="result-item job-applicant-container">
                   <h3 className="container-title">Applicants for: {job.title} at {job.company}</h3>
                       {job.applicants.length > 0 ? (
-                      job.applicants.map(applicant => <UserResult key={applicant.UserID} user={{...applicant, jobId: job.jobId, jobTitle: job.title}} onInviteClick={onInviteClick} />)
+                      job.applicants.map(applicant => <UserResult key={applicant.UserID} user={{...applicant, jobId: job.jobId, jobTitle: job.title}} onInviteClick={onInviteClick} currentUserRole={currentUserRole} />)
                   ) : (
                       <p>No applicants found for this job yet.</p>
                   )}
               </div>
           ));
       }
-      // Handles a simple list of jobs
       else if (resultData.jobs && Array.isArray(resultData.jobs)) {
           resultsContent = resultData.jobs.length > 0
             ? resultData.jobs.map(job => <JobResult key={job.jobId} job={job} />)
             : <p>No jobs found matching your criteria.</p>;
-      
-      // Handles a list of users
-            } else if (resultData.users && Array.isArray(resultData.users)) {
-                    resultsContent = resultData.users.length > 0
-                        ? resultData.users.map(user => <UserResult key={user.UserID} user={user} onInviteClick={onInviteClick} />)
-                        : <p>No users found matching your criteria.</p>;
-
-      // Handles a single user lookup
+      } else if (resultData.users && Array.isArray(resultData.users)) {
+            resultsContent = resultData.users.length > 0
+                ? resultData.users.map(user => <UserResult key={user.UserID} user={user} onInviteClick={onInviteClick} currentUserRole={currentUserRole} />)
+                : <p>No users found matching your criteria.</p>;
       } else if (resultData.userById) {
-          resultsContent = <UserResult user={resultData.userById} onInviteClick={onInviteClick} />;
-
-      // Handles a successful user creation or update
-      } else if (resultData.createUser || resultData.updateUser || resultData.addSkillsToUser) {
-                    const user = resultData.createUser || resultData.updateUser || resultData.addSkillsToUser;
-                    resultsContent = (
-                        <div>
-                            <p>✅ Success! User profile updated:</p>
-                            <UserResult user={user} onInviteClick={onInviteClick} />
-                        </div>
-                    );
+          resultsContent = <UserResult user={resultData.userById} onInviteClick={onInviteClick} currentUserRole={currentUserRole} />;
       }
   }
   
-  // Fallback for successful operations that don't return a known data structure
   if (!resultsContent && rawJson?.data) {
       resultsContent = <p>✅ The operation was successful. View details for the raw response.</p>;
-  // Fallback for GraphQL errors
   } else if (!resultsContent && rawJson?.errors) {
       resultsContent = <p>❌ An error occurred. See details for more information.</p>;
   }
@@ -256,18 +249,15 @@ const ResultsDisplay = ({ rawGql, rawJson, onInviteClick, currentUserRole }) => 
       <div className="results-summary">
         {resultsContent}
       </div>
-      
       <div className="details-toggle">
         <button onClick={() => setDetailsVisible(!detailsVisible)}>
           {detailsVisible ? 'Hide GraphQL & JSON' : 'Show GraphQL & JSON'}
         </button>
       </div>
-
       {detailsVisible && (
         <div className="raw-details">
           <strong>Generated GraphQL:</strong>
           <pre>{rawGql}</pre>
-          
           <strong>Result JSON:</strong>
           <pre>{JSON.stringify(rawJson, null, 2)}</pre>
         </div>
@@ -276,15 +266,15 @@ const ResultsDisplay = ({ rawGql, rawJson, onInviteClick, currentUserRole }) => 
   );
 };
 
-// Helper function to render a status badge
 const StatusBadge = ({ status }) => {
     let className = 'item-status';
     if (status === 'Hired') className += ' status-hired';
     else if (status === 'Interviewing' || status === 'interview') className += ' status-interviewing';
+    else if (status === 'InterviewInviteSent') className += ' status-interviewing'; // Orange-ish
     else if (status === 'Rejected') className += ' status-rejected';
     else className += ' status-applied';
 
-    return <span className={className}>{status.charAt(0).toUpperCase() + status.slice(1)}</span>;
+    return <span className={className}>{status}</span>;
 };
 
 export default ResultsDisplay;

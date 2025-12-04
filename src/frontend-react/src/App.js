@@ -62,9 +62,17 @@ function ChatPage() {
     return content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   };
 
-  // --- NEW: Function to initiate scheduling from a component (like ResultsDisplay) ---
-  const handleInitiateScheduling = (candidateId, jobId, candidateName, jobTitle) => {
-    setSchedulingTarget({ candidateId, jobId, candidateName, jobTitle });
+  // --- UPDATED: Handles both Recruiter (Job/Candidate) and Applicant (App/Job) triggers ---
+  const handleInitiateScheduling = (candidateId, jobId, appId, jobTitle, candidateName) => {
+    // Note: ResultDisplay passes args: (userID, jobID, appID/Name, Name/Title) differently based on context
+    // We normalize it here
+    setSchedulingTarget({ 
+        candidateId: candidateId, 
+        jobId: jobId, 
+        appId: appId, // Null for Recruiter manual booking, Set for Applicant self-schedule
+        jobTitle: jobTitle || candidateName, // Fallback if arguments shift
+        candidateName: candidateName || "Candidate"
+    });
   };
 
   const handleSend = async (e) => {

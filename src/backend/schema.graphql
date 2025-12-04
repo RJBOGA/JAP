@@ -200,6 +200,12 @@ type Query {
     durationMinutes: Int
     numDays: Int
   ): [String!]!
+  
+  # --- NEW QUERY (FS.4) ---
+  """
+  Returns a list of interviews where the logged-in user is the Recruiter or Hiring Manager.
+  """
+  myBookedInterviews: [Interview!]!
 }
 
 type Mutation {
@@ -243,6 +249,15 @@ type Mutation {
     companyName: String
     startTimeISO: String!
   ): Interview
+
+  # --- NEW MUTATION (FS.2) ---
+  """
+  Allows an Applicant to finalize a booking for an application that is in 'InterviewInviteSent' status.
+  """
+  selectInterviewSlot(
+    appId: Int!
+    startTime: String!
+  ): Interview!
 
   # --- NEW MUTATIONS FOR FEATURE 2.2.6 ---
   applyWithResume(

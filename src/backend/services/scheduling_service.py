@@ -26,21 +26,21 @@ def set_recruiter_availability(recruiter_id: int, availability_data: list):
         logger.error(f"Error setting availability: {e}")
         return False
 
-def find_open_slots(recruiter_id: int, candidate_id: int, start_date: datetime, end_date: datetime, duration_minutes: int = 30):
+def find_open_slots(interviewer_id: int, candidate_id: int, start_date: datetime, end_date: datetime, duration_minutes: int = 30):
     from ..db import schedules_collection, interviews_collection
-    
-    # Note: 'recruiter_id' is the UserID of the person whose calendar we are checking.
-    # 1. Get Schedule
-    schedule = schedules_collection().find_one({"recruiterId": recruiter_id})
+
+    # Note: 'interviewer_id' is the UserID of the person whose calendar we are checking.
+    # 1. Get Schedule (schedules are still keyed by 'recruiterId' in the DB schema)
+    schedule = schedules_collection().find_one({"recruiterId": interviewer_id})
     if not schedule or not schedule.get("availability"):
         return [] # No availability set
 
     # 2. Get Bookings
-    # CRITICAL UPDATE: Check if this person is booked as a Recruiter OR as a Hiring Manager
+    # Check if this person is booked as a Recruiter OR as a Hiring Manager
     booked = list(interviews_collection().find({
         "$or": [
-            {"recruiterId": recruiter_id}, 
-            {"hiringManagerId": recruiter_id}, # <--- Checks the new field
+            {"recruiterId": interviewer_id}, 
+            {"hiringManagerId": interviewer_id},
             {"candidateId": candidate_id}
         ],
         "startTime": {"$gte": start_date.isoformat()},
