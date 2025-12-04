@@ -48,9 +48,11 @@ def _handle_hired_status_side_effects(job_id, hired_user_id):
 # --- FIELD RESOLVERS ---
 @job.field("applicants") 
 def resolve_job_applicants(job_obj, info):
-    # --- SECURITY CHECK ---
-    # If the user is NOT a recruiter, return an empty list or None
-    if info.context.get("user_role") != "Recruiter":
+    # --- SECURITY CHECK (FS.X.4) ---
+    # Recruiters can view all applications for jobs they created (posterUserId)
+    # Managers can view applications for jobs they manage (hiringManagerId)
+    # Applicants and others cannot view the applicants list
+    if info.context.get("user_role") not in ["Recruiter", "Manager"]:
         return []
     # ----------------------
 
@@ -206,11 +208,11 @@ def resolve_update_application(obj, info, appId, input):
 
 @mutation.field("updateApplicationStatusByNames")
 def resolve_update_application_status_by_names(obj, info, userName, jobTitle, newStatus, companyName=None):
-    # --- AUTHORIZATION ---
+    # --- AUTHORIZATION (FS.X.3) ---
     user_role = info.context.get("user_role")
-    if user_role != "Recruiter": 
-        logger.warning(f"Permission denied: Non-Recruiter attempted status update for {userName}")
-        raise ValueError("Permission denied: You must be a Recruiter to update an application.")
+    if user_role != "Manager": 
+        logger.warning(f"Permission denied: Non-Manager attempted status update for {userName}")
+        raise ValueError("Permission denied: You must be a Manager to update an application. (FS.X.3)")
     
     # --- FIND THE SINGLE TARGET APPLICATION ---
     application_filter = {"userName": userName, "jobTitle": jobTitle}
@@ -409,9 +411,9 @@ def resolve_add_note_to_application_by_job(obj, info, jobTitle, note, companyNam
 
 @mutation.field("addManagerNoteToApplication")
 def resolve_add_manager_note_to_application(obj, info, userName, jobTitle, note, companyName=None):
-    # --- AUTHORIZATION ---
+    # --- AUTHORIZATION (FS.X.3) ---
     user_role = info.context.get("user_role")
-    if user_role != "Recruiter": raise ValueError("Permission denied: You must be a Recruiter to add a note.")
+    if user_role != "Manager": raise ValueError("Permission denied: You must be a Manager to add a note. (FS.X.3)")
     
     # --- FIND THE SINGLE TARGET APPLICATION ---
     application_filter = {"userName": userName, "jobTitle": jobTitle}

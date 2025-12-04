@@ -12,8 +12,8 @@ interview = ObjectType("Interview")
 def resolve_my_schedule(_, info):
     user_id = info.context.get("UserID")
     user_role = info.context.get("user_role")
-    if not user_id or user_role not in ["Recruiter", "Manager"]:
-        raise PermissionError("Access denied: Only Recruiters or Managers can view schedules.")
+    if not user_id or user_role != "Manager":
+        raise PermissionError("Access denied: Only Managers can view schedules. (FS.X.3)")
 
     from ..db import schedules_collection
     schedule = schedules_collection().find_one({"recruiterId": user_id}) 
@@ -45,8 +45,8 @@ def resolve_my_booked_interviews(_, info):
     user_id = info.context.get("UserID")
     user_role = info.context.get("user_role")
     
-    if not user_id or user_role not in ["Recruiter", "Manager"]:
-        raise PermissionError("Access denied: Only Recruiters or Managers can view booked interviews.")
+    if not user_id or user_role != "Manager":
+        raise PermissionError("Access denied: Only Managers can view booked interviews. (FS.X.3)")
     
     from ..db import interviews_collection
     # Find interviews where this user is either the Recruiter (Coordinator) or Hiring Manager
@@ -63,16 +63,16 @@ def resolve_my_booked_interviews(_, info):
 def resolve_set_my_availability(_, info, availability):
     user_id = info.context.get("UserID")
     user_role = info.context.get("user_role")
-    if not user_id or user_role not in ["Recruiter", "Manager"]:
-        raise PermissionError("Access denied: Only Recruiters or Managers can set availability.")
+    if not user_id or user_role != "Manager":
+        raise PermissionError("Access denied: Only Managers can set availability. (FS.X.3)")
     return scheduling_service.set_recruiter_availability(user_id, availability)
 
 @mutation.field("bookInterview")
 def resolve_book_interview(_, info, jobId, candidateId, startTime, endTime):
     user_id = info.context.get("UserID")
     user_role = info.context.get("user_role")
-    if not user_id or user_role not in ["Recruiter", "Manager"]:
-        raise PermissionError("Access denied: You must be a Recruiter or Manager to book interviews.")
+    if not user_id or user_role != "Manager":
+        raise PermissionError("Access denied: Only Managers can book interviews. (FS.X.3)")
         
     job = job_repo.find_job_by_id(jobId)
     if not job: raise ValueError(f"Job {jobId} not found.")
@@ -101,8 +101,8 @@ def resolve_book_interview(_, info, jobId, candidateId, startTime, endTime):
 def resolve_book_interview_nl(_, info, candidateName, jobTitle, startTimeISO, companyName=None):
     user_id = info.context.get("UserID")
     user_role = info.context.get("user_role")
-    if not user_id or user_role != "Recruiter":
-        raise PermissionError("Access denied.")
+    if not user_id or user_role != "Manager":
+        raise PermissionError("Access denied: Only Managers can book interviews. (FS.X.3)")
 
     name_parts = candidateName.strip().split()
     first = name_parts[0]
@@ -136,7 +136,7 @@ def resolve_book_interview_nl(_, info, candidateName, jobTitle, startTimeISO, co
         end_time=end_dt
     )
 
-# --- NEW MUTATION (FS.2) ---
+# --- NEW MUTATION (FS.2) - Applicant-driven booking (not restricted by FS.X) ---
 @mutation.field("selectInterviewSlot")
 def resolve_select_interview_slot(_, info, appId, startTime):
     """

@@ -58,11 +58,15 @@ def resolve_jobs(obj, info, limit=None, skip=None, company=None, location=None, 
     # 1. Build the basic search filter
     q = build_job_filter(company, location, title, posterUserId)
     
-    # 2. RBAC: Filter out Closed jobs for Applicants
+    # 2. RBAC: Manager-scoped visibility (FS.X.2)
     user_role = info.context.get("user_role")
+    user_id = info.context.get("UserID")
     
-    # If user is NOT a Recruiter (i.e., Applicant or unauthenticated), hide Closed jobs
-    if user_role != "Recruiter" and user_role != "Manager": # Updated to allow Managers to see closed jobs too? Maybe.
+    if user_role == "Manager":
+        # Managers can only see jobs assigned to them
+        q["hiringManagerId"] = user_id
+    elif user_role != "Recruiter":
+        # If user is NOT a Recruiter or Manager (i.e., Applicant or unauthenticated), hide Closed jobs
         # This matches anything that is NOT "Closed" (includes "Open" and null)
         q["status"] = {"$ne": "Closed"}
 
@@ -94,6 +98,11 @@ def resolve_create_job(obj, info, input):
     user_first_name = info.context.get("firstName", "")
     user_last_name = info.context.get("lastName", "")
     poster_name = f"{user_first_name} {user_last_name}".strip()
+    
+    # --- ENFORCE: Hiring Manager Required (FS.X.1) ---
+    # Every job must be delegated to a Manager upon creation
+    if not input.get("hiringManagerId") and not input.get("hiringManagerName"):
+        raise ValueError("Job creation requires a Hiring Manager. Provide either 'hiringManagerId' or 'hiringManagerName'.")
     
     # --- Resolve Manager (Pass both ID and Name inputs) ---
     hm_id, hm_name = _resolve_manager_info(
