@@ -268,4 +268,23 @@ type Mutation {
   ): Application!
 
   deleteResume(resumeId: Int!): Boolean!
+
+  # --- NEW MUTATION (FS.5) ---
+  """
+  Allows an Applicant to reject a job offer.
+  Requires status 'Offered'.
+  """
+  rejectOffer(
+    jobTitle: String!
+    companyName: String
+  ): Application!
+
+  """
+  Allows an Applicant to ACCEPT a job offer.
+  Requires status 'Offered'. Triggers 'Hired' workflow.
+  """
+  acceptOffer(
+    jobTitle: String!
+    companyName: String
+  ): Application!
 }

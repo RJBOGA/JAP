@@ -134,6 +134,10 @@ def build_nl2gql_prompt(user_text: str, schema_sdl: str, user_context: Optional[
         # ----------------------------------------
         "- **INVITE FLOW (FS.2):**\n"
         "  1. If the user asks to 'Invite [Name] to interview' or 'Send interview invite', use `updateApplicationStatusByNames(..., newStatus: \"InterviewInviteSent\")`. This triggers an email inviting the candidate to select a slot.\n"
+        "- **OFFER FLOW (FS.5):**\n"
+        "  1. **RECRUITER:** If the user asks to 'Offer the job', 'Extend offer', or 'Give offer' to a candidate, use `updateApplicationStatusByNames(..., newStatus: \"Offered\")`.\n"
+        "  2. **APPLICANT:** If the user asks to 'Reject the offer' or 'Decline offer', use the `rejectOffer` mutation. Extract `jobTitle` and `companyName` from the text.\n"
+        "  3. **APPLICANT:** If the user asks to 'Accept the offer' or 'I take the job', use the `acceptOffer` mutation.\n"
         "- **MANAGER DASHBOARD (FS.4):**\n"
         "  1. If the user asks to see 'my booked interviews', 'scheduled interviews', or 'my calendar', use the `myBookedInterviews` query.\n"
         "- To set a **minimum degree year** for a job, use `updateJobByFields(..., input: {minimum_degree_year: 2015})` or `updateJob(..., input: {minimum_degree_year: 2015})`.\n"
@@ -180,7 +184,8 @@ def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, g
             OLLAMA_GENERATE_URL,
             json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
             headers=headers,
-            timeout=90,
+            # --- UPDATED TIMEOUT ---
+            timeout=180, # Increased from 90 to 180 seconds to avoid ReadTimeout
         )
     except requests.exceptions.RequestException as e:
         return json_error(f"Ollama network error: {e}", 502)

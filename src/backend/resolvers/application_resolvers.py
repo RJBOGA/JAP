@@ -29,24 +29,21 @@ def _handle_hired_status_side_effects(job_id, hired_user_id):
     # Find all other applications for this job (excluding the hired user)
     other_apps = application_repo.find_applications({"jobId": job_id, "userId": {"$ne": hired_user_id}})
     job = job_repo.find_job_by_id(job_id)
-    if not job: 
-        print(f"ERROR: Could not find job {job_id} for rejection emails.")
-        return
+    if not job: return
 
     for app in other_apps:
-        # Only notify if status is Applied, Interviewing, or Invite Sent (to avoid notifying already rejected candidates)
-        if app.get("status") in ["Applied", "Interviewing", "InterviewInviteSent"]:
+        # Added 'Offered' to list of statuses that get rejected when someone else is hired
+        if app.get("status") in ["Applied", "Interviewing", "InterviewInviteSent", "Offered"]:
             candidate = user_repo.find_one_by_id(app["userId"])
             if candidate:
                 email_service.send_rejection_notification(
                     to_email=candidate["email"], candidate_name=candidate["firstName"],
                     job_title=job["title"], company=job["company"],
-                    app_id=app["appId"] # Correctly passes app_id
+                    app_id=app["appId"]
                 )
-                # OPTIONAL: Mark them as Rejected so they don't get processed again
                 application_repo.update_one_application({"appId": app["appId"]}, {"status": "Rejected"})
                 
-    print("Hired status side-effects complete. Job is Closed, mass rejections sent.")
+    print("Hired status side-effects complete.")
 
 # --- FIELD RESOLVERS ---
 @job.field("applicants") 
@@ -242,39 +239,37 @@ def resolve_update_application_status_by_names(obj, info, userName, jobTitle, ne
     candidate = user_repo.find_one_by_id(updated_app["userId"])
     job = job_repo.find_job_by_id(updated_app["jobId"])
 
-    # --- FIX: Use .lower().startswith('interview') for safety ---
-    # --- NEW STATUS LOGIC: InterviewInviteSent ---
-    if newStatus == "InterviewInviteSent" and candidate and job:
+    if not candidate or not job: return to_application_output(updated_app)
+
+    # --- STATUS HANDLING LOGIC ---
+
+    # 1. Interview Invite (FS.2)
+    if newStatus == "InterviewInviteSent":
         email_service.send_scheduling_invite_email(
             to_email=candidate["email"], candidate_name=candidate["firstName"],
             job_title=job["title"], company=job["company"],
             app_id=updated_app["appId"] 
         )
-    # Legacy direct status update (manual booking by Recruiter) triggers confirmation
-    elif newStatus.lower().startswith("interview") and newStatus != "InterviewInviteSent" and candidate and job:
-        logger.debug("DEBUG_C: Initiating send_interview_invitation.")
-        email_service.send_interview_invitation(
+    
+    # 2. Offer Extended (FS.5 Pre-requisite) - NEW
+    elif newStatus == "Offered":
+        email_service.send_offer_extension_notification(
             to_email=candidate["email"], candidate_name=candidate["firstName"],
             job_title=job["title"], company=job["company"],
-            app_id=updated_app["appId"] 
+            app_id=updated_app["appId"]
         )
-    
-    if newStatus.lower() == "hired" and candidate and job: # <-- FIX: Checking for 'hired' (long form)
-        # Send confirmation/offer email to the hired candidate and audit success
+
+    # 3. Hired (Triggers Job Close)
+    elif newStatus.lower() == "hired":
         offer_subject = f"Job Offer for {job['title']} at {job['company']}"
-        offer_body = f"<p>Congratulations {candidate['firstName']}, we are delighted to offer you the position!</p><p>Details will follow shortly.</p>"
-        
-        # We call the internal helper directly to send the email and audit
+        offer_body = f"<p>Congratulations {candidate['firstName']}, we are delighted to offer you the position!</p>"
         if email_service._send_email(candidate["email"], offer_subject, offer_body): 
             email_service._audit_email_success(updated_app["appId"], "Hired")
-
-        logger.debug("DEBUG_D: Starting background thread for mass rejection.")
         thread = threading.Thread(target=_handle_hired_status_side_effects, args=(job["jobId"], candidate["UserID"]))
         thread.start()
 
-    # 3. NEW: Manual Rejection (Send Email Immediately)
-    if newStatus.lower() == "rejected" and candidate and job:
-        logger.debug(f"Sending rejection email to {candidate['email']}")
+    # 4. Rejected
+    elif newStatus.lower() == "rejected":
         email_service.send_rejection_notification(
             to_email=candidate["email"], 
             candidate_name=candidate["firstName"],
@@ -282,7 +277,106 @@ def resolve_update_application_status_by_names(obj, info, userName, jobTitle, ne
             company=job["company"],
             app_id=updated_app["appId"]
         )
-    logger.debug(f"DEBUG_D: Final resolver output for App {target_app_id}.")
+    
+    # Legacy Interviewing status handling...
+    elif newStatus.lower().startswith("interview") and newStatus != "InterviewInviteSent":
+         email_service.send_interview_invitation(
+            to_email=candidate["email"], candidate_name=candidate["firstName"],
+            job_title=job["title"], company=job["company"],
+            app_id=updated_app["appId"] 
+        )
+
+    return to_application_output(updated_app)
+
+# --- NEW MUTATION: REJECT OFFER (FS.5) ---
+@mutation.field("acceptOffer")
+def resolve_accept_offer(obj, info, jobTitle, companyName=None):
+    user_id = info.context.get("UserID")
+    if not user_id: raise PermissionError("You must be logged in.")
+    
+    # 1. Find Job
+    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
+    jobs = job_repo.find_jobs(job_filter, None, None)
+    if not jobs: raise ValueError(f"Job '{jobTitle}' not found.")
+    job = jobs[0]
+    
+    # 2. Find Application owned by User
+    app_filter = {"userId": user_id, "jobId": job["jobId"]}
+    apps = application_repo.find_applications(app_filter)
+    if not apps: raise ValueError("Application not found.")
+    app = apps[0]
+    
+    # 3. Status Validation
+    if app["status"] != "Offered":
+        raise ValueError(f"Cannot accept offer: Current status is '{app['status']}', not 'Offered'.")
+        
+    # 4. Update to Hired
+    updated_app = application_repo.update_one_application({"appId": app["appId"]}, {"status": "Hired"})
+    
+    # 5. Notify Manager
+    manager_id = job.get("hiringManagerId") or job.get("posterUserId")
+    if manager_id:
+        manager = user_repo.find_one_by_id(manager_id)
+        candidate = user_repo.find_one_by_id(user_id)
+        if manager and candidate:
+            manager_name = f"{manager['firstName']} {manager['lastName']}"
+            candidate_name = f"{candidate['firstName']} {candidate['lastName']}"
+            email_service.send_offer_acceptance_notification(
+                to_email=manager["email"],
+                manager_name=manager_name,
+                candidate_name=candidate_name,
+                job_title=job["title"],
+                app_id=app["appId"]
+            )
+
+    # 6. Trigger System Side-Effects (Close Job, Reject Others)
+    thread = threading.Thread(target=_handle_hired_status_side_effects, args=(job["jobId"], user_id))
+    thread.start()
+    
+    return to_application_output(updated_app)
+
+@mutation.field("rejectOffer")
+def resolve_reject_offer(obj, info, jobTitle, companyName=None):
+    user_id = info.context.get("UserID")
+    if not user_id: raise PermissionError("You must be logged in.")
+    
+    # 1. Find Job
+    job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
+    jobs = job_repo.find_jobs(job_filter, None, None)
+    if not jobs: raise ValueError(f"Job '{jobTitle}' not found.")
+    job = jobs[0]
+    
+    # 2. Find Application owned by User
+    app_filter = {"userId": user_id, "jobId": job["jobId"]}
+    apps = application_repo.find_applications(app_filter)
+    if not apps: raise ValueError("Application not found.")
+    app = apps[0]
+    
+    # 3. Status Validation
+    # Allow rejecting even if 'Hired' (reverting decision)
+    if app["status"] not in ["Offered", "Hired"]:
+        raise ValueError(f"Cannot reject offer: Current status is '{app['status']}', not 'Offered' or 'Hired'.")
+        
+    # 4. Update Status
+    updated_app = application_repo.update_one_application({"appId": app["appId"]}, {"status": "Offer Rejected"})
+    
+    # 5. Notify Manager
+    # Use Hiring Manager if assigned, otherwise Poster (Recruiter)
+    manager_id = job.get("hiringManagerId") or job.get("posterUserId")
+    if manager_id:
+        manager = user_repo.find_one_by_id(manager_id)
+        candidate = user_repo.find_one_by_id(user_id)
+        if manager and candidate:
+            manager_name = f"{manager['firstName']} {manager['lastName']}"
+            candidate_name = f"{candidate['firstName']} {candidate['lastName']}"
+            email_service.send_offer_rejection_notification(
+                to_email=manager["email"],
+                manager_name=manager_name,
+                candidate_name=candidate_name,
+                job_title=job["title"],
+                app_id=app["appId"]
+            )
+            
     return to_application_output(updated_app)
 
 @mutation.field("addNoteToApplicationByJob")

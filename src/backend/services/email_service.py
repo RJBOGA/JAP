@@ -142,3 +142,49 @@ def send_scheduling_invite_email(to_email: str, candidate_name: str, job_title: 
     """
     if _send_email(to_email, subject, html_body):
         _audit_email_success(app_id, "InviteSent")
+
+# --- NEW FUNCTIONS FOR FS.5 ---
+
+def send_offer_extension_notification(to_email: str, candidate_name: str, job_title: str, company: str, app_id: int):
+    """
+    Recruiter -> Candidate: Inform them an offer has been extended.
+    """
+    subject = f"Job Offer: {job_title} at {company}"
+    html_body = f"""
+    <p>Dear {candidate_name},</p>
+    <p>We are pleased to offer you the position of <strong>{job_title}</strong> at <strong>{company}</strong>!</p>
+    <p>The formal offer letter with details has been sent to your candidate portal.</p>
+    <p>Please review it and let us know your decision via the portal or by replying to this email.</p>
+    <p>Best regards,<br/>The Hiring Team at {company}</p>
+    """
+    if _send_email(to_email, subject, html_body):
+        _audit_email_success(app_id, "OfferExtended")
+
+def send_offer_rejection_notification(to_email: str, manager_name: str, candidate_name: str, job_title: str, app_id: int):
+    """
+    Candidate -> Manager: Professional rejection of the offer.
+    """
+    subject = f"Offer Declined: {candidate_name} for {job_title}"
+    html_body = f"""
+    <p>Hi {manager_name},</p>
+    <p>This email is to notify you that <strong>{candidate_name}</strong> has declined the job offer for the <strong>{job_title}</strong> position.</p>
+    <p>The application status has been updated to 'Offer Rejected'.</p>
+    <p>Best regards,<br/>JobChat.AI Automated System</p>
+    """
+    if _send_email(to_email, subject, html_body):
+        _audit_email_success(app_id, "OfferRejected")
+
+def send_offer_acceptance_notification(to_email: str, manager_name: str, candidate_name: str, job_title: str, app_id: int):
+    """
+    Candidate -> Manager: Professional acceptance of the offer.
+    """
+    subject = f"Offer Accepted! {candidate_name} for {job_title}"
+    html_body = f"""
+    <p>Hi {manager_name},</p>
+    <p>Great news! <strong>{candidate_name}</strong> has <strong>ACCEPTED</strong> the job offer for the <strong>{job_title}</strong> position.</p>
+    <p>The application status has been updated to 'Hired' and the job has been automatically closed.</p>
+    <p>Please reach out to the candidate to coordinate onboarding.</p>
+    <p>Best regards,<br/>JobChat.AI Automated System</p>
+    """
+    if _send_email(to_email, subject, html_body):
+        _audit_email_success(app_id, "OfferAccepted")

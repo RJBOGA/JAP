@@ -47,12 +47,14 @@ const UserResult = ({ user, onInviteClick, currentUserRole }) => {
     const status = localStatus ? localStatus.toLowerCase() : '';
     const isScheduled = status.includes('interview') && !status.includes('invite'); // Interviewing
     const isInviteSent = status === 'interviewinvitesent';
+    const isOffered = status === 'offered';
     const isHired = status === 'hired';
     const isRejected = status === 'rejected';
 
     let buttonText = 'Schedule Interview'; // Default manual booking
     if (isInviteSent) buttonText = '📩 Invite Sent';
     if (isScheduled) buttonText = '✅ Interview Scheduled';
+    if (isOffered) buttonText = '🎉 Offer Sent';
     if (isHired) buttonText = '🎉 Hired';
     if (isRejected) buttonText = '❌ Rejected';
 
@@ -122,15 +124,32 @@ const UserResult = ({ user, onInviteClick, currentUserRole }) => {
                 {user.resume_url && <a href={`http://localhost:8000${user.resume_url}`} target="_blank" rel="noopener noreferrer" className="resume-link">📄 View Resume</a>}
             </div>
 
-            {isRecruiter && (
+            {/* Recruiter decision buttons hidden for now */}
+            {/* {isRecruiter && (
                 <div className="action-area">
                     {/* Hire/Reject Buttons */}
-                    <div className="decision-buttons" style={{marginBottom: '10px'}}>
-                         <button className="decision-btn hire-btn" onClick={() => handleDecision("Hired")}>🎉 Hire</button>
+                    {/* <div className="decision-buttons" style={{marginBottom: '10px'}}>
+                         {/* If already interviewed/scheduled, show Offer option */}
+                    {/* {(isScheduled || isOffered) && (
+                             <button className="decision-btn hire-btn" onClick={() => handleDecision("Offered")} disabled={isOffered}>
+                                 {isOffered ? "Offer Pending" : "📜 Extend Offer"}
+                             </button>
+                         )}
+                         {/* Fallback Hire (Manual) */}
+                    {/* <button className="decision-btn hire-btn" onClick={() => handleDecision("Hired")}>🎉 Force Hire</button>
                          <button className="decision-btn reject-btn" onClick={() => handleDecision("Rejected")}>❌ Reject</button>
                     </div>
+                    
+                    {/* Invite/Schedule Button */}
+                    {/* <button 
+                        className={`action-button ${isScheduled || isHired || isRejected || isOffered ? 'disabled-button' : 'invite-button'}`}
+                        disabled={isScheduled || isHired || isRejected || isOffered || loading}
+                        onClick={() => onInviteClick(user.UserID, user.jobId, `${user.firstName} ${user.lastName}`, user.jobTitle)}
+                    >
+                        {loading ? '...' : buttonText}
+                    </button>
                 </div>
-            )}
+            )} */}
 
             {/* If interview is scheduled, show the scheduled time for visibility to all roles */}
             {isScheduled && interviewDateStr && (
@@ -142,10 +161,30 @@ const UserResult = ({ user, onInviteClick, currentUserRole }) => {
     );
 };
 
-// --- UPDATED APPLICATION RESULT: Includes "Select Slot" for Applicant ---
+// --- UPDATED APPLICATION RESULT: Applicant View ---
 const ApplicationResult = ({ app, onSelectSlotClick, currentUserRole }) => {
     const isInviteSent = app.status === 'InterviewInviteSent';
+    const isOffered = app.status === 'Offered';
     const isApplicant = currentUserRole === 'Applicant';
+
+    const handleApplicantDecision = async (action) => {
+        if(!window.confirm(`Are you sure you want to ${action} the offer?`)) return;
+        const mutation = action === 'Accept' ? 'acceptOffer' : 'rejectOffer';
+        
+        try {
+            await apiClient.post('/graphql', {
+                query: `
+                    mutation Decision($jobTitle: String!, $companyName: String!) {
+                        ${mutation}(jobTitle: $jobTitle, companyName: $companyName) { status }
+                    }
+                `,
+                variables: { jobTitle: app.job?.title, companyName: app.job?.company }
+            });
+            window.location.reload(); // Simple refresh to show new status
+        } catch(e) {
+            alert("Action failed: " + e.message);
+        }
+    };
 
     return (
         <div className="result-item">
@@ -160,7 +199,7 @@ const ApplicationResult = ({ app, onSelectSlotClick, currentUserRole }) => {
                 </div>
             )}
             
-            {/* Applicant Self-Scheduling Action: STRICT RBAC */}
+            {/* Applicant Scheduling Action */}
             {isInviteSent && isApplicant && (
                 <div className="action-area">
                     <p style={{color: '#e65100', fontWeight: 'bold'}}>Action Required: Recruiter has invited you to interview.</p>
@@ -170,6 +209,17 @@ const ApplicationResult = ({ app, onSelectSlotClick, currentUserRole }) => {
                     >
                         📅 Schedule Now
                     </button>
+                </div>
+            )}
+
+            {/* Applicant Offer Action */}
+            {isOffered && isApplicant && (
+                <div className="action-area">
+                    <p style={{color: '#2e7d32', fontWeight: 'bold', fontSize: '1.1em'}}>🎉 You have received an offer!</p>
+                    <div className="decision-buttons">
+                        <button className="decision-btn hire-btn" onClick={() => handleApplicantDecision('Accept')}>✅ Accept Offer</button>
+                        <button className="decision-btn reject-btn" onClick={() => handleApplicantDecision('Reject')}>❌ Decline</button>
+                    </div>
                 </div>
             )}
         </div>
@@ -209,8 +259,9 @@ const ResultsDisplay = ({ rawGql, rawJson, onInviteClick, currentUserRole }) => 
               </div>
           );
       }
-      else if (resultData.updateApplicationStatusByNames || resultData.addNoteToApplicationByJob) {
-          const app = resultData.updateApplicationStatusByNames || resultData.addNoteToApplicationByJob;
+      else if (resultData.updateApplicationStatusByNames || resultData.addNoteToApplicationByJob || resultData.acceptOffer || resultData.rejectOffer) {
+          // Handle all single-app return types
+          const app = resultData.updateApplicationStatusByNames || resultData.addNoteToApplicationByJob || resultData.acceptOffer || resultData.rejectOffer;
           resultsContent = <ApplicationResult app={app} currentUserRole={currentUserRole} />;
       }
       else if (resultData.jobs && Array.isArray(resultData.jobs) && resultData.jobs[0]?.applicants) {
